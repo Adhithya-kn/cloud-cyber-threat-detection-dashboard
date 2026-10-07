@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
 from datetime import datetime, timedelta
 import os, io, sys
 
@@ -16,7 +17,7 @@ st.set_page_config(page_title="Log Monitoring | CyberShield", page_icon="📋", 
 
 st.markdown("""<style>
 .main{background:#0a0e1a;} .stApp{background:#0a0e1a;}
-#MainMenu{visibility:hidden;} footer{visibility:hidden;} header{visibility:hidden;}
+#MainMenu{visibility:hidden;} footer{visibility:hidden;}
 [data-testid="stSidebar"]{background:#0d1117;border-right:1px solid #21262d;}
 .kpi-card{background:linear-gradient(135deg,#111827 0%,#1f2937 100%);border:1px solid #374151;
   border-radius:12px;padding:18px;text-align:center;box-shadow:0 4px 6px rgba(0,0,0,0.3);}
@@ -24,6 +25,10 @@ st.markdown("""<style>
 .kpi-label{font-size:.8rem;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em;margin-top:4px;}
 .section-hdr{font-size:1.1rem;font-weight:600;color:#00d4ff;
   border-bottom:1px solid #1e40af;padding-bottom:6px;margin-bottom:14px;}
+.report-summary-box{
+  background:#111827;border:1px solid #374151;border-radius:8px;padding:14px;
+  color:#e2e8f0;font-family:monospace;white-space:pre-wrap;
+}
 </style>""", unsafe_allow_html=True)
 
 CHART_LAYOUT = dict(
@@ -31,248 +36,250 @@ CHART_LAYOUT = dict(
     font=dict(color="#e2e8f0"), margin=dict(l=40,r=20,t=30,b=40),
 )
 
-
-@st.cache_data(ttl=300)
-def _gen_logs(n=3000):
-    rng = np.random.default_rng(42)
-    base = datetime.now() - timedelta(hours=48)
-    ts = [base + timedelta(seconds=int(s)) for s in np.sort(rng.integers(0, 172800, n))]
-    attackers = ["45.33.32.156","23.95.110.42","198.199.85.30","104.21.44.78"]
-    src = [f"192.168.{rng.integers(1,10)}.{rng.integers(1,254)}" for _ in range(n)]
-    for i in rng.choice(n, 400, replace=False): src[i] = attackers[rng.integers(0,4)]
-    et = rng.choice(["Login Attempt","Port Scan","File Access","Data Transfer","Connection","DNS Query"],
-                    n, p=[0.25,0.15,0.20,0.10,0.20,0.10])
-    return pd.DataFrame({
-        "timestamp":ts,
-        "source_ip":src,
-        "destination_ip":[f"10.0.{rng.integers(0,4)}.{rng.integers(1,50)}" for _ in range(n)],
-        "source_port":rng.integers(1024,65535,n),
-        "destination_port":rng.choice([22,80,443,3306,3389,8080,21,25,53,8443],n),
-        "protocol":rng.choice(["TCP","UDP","ICMP","HTTP","HTTPS","SSH","FTP"],n,
-                               p=[0.35,0.20,0.05,0.15,0.15,0.07,0.03]),
-        "event_type":et,
-        "status":rng.choice(["Success","Failure"],n,p=[0.65,0.35]),
-        "bytes_transferred":rng.integers(64,150000,n),
-    })
-
-
 def _load_logs():
-    if "logs_df" in st.session_state:
-        return st.session_state["logs_df"]
+    if "logs_df" in st.session_state and not st.session_state["logs_df"].empty:
+        return st.session_state["logs_df"].copy()
     p = "data/demo_security_logs.csv"
     if os.path.exists(p):
         try:
-            df = pd.read_csv(p, parse_dates=["timestamp"])
-            st.session_state["logs_df"] = df
-            return df
+            return pd.read_csv(p, parse_dates=["timestamp"])
         except Exception:
             pass
-    df = _gen_logs()
-    st.session_state["logs_df"] = df
-    return df
-
+    # Fallback minimal df
+    return pd.DataFrame(columns=[
+        "timestamp","source_ip","destination_ip","source_port","destination_port",
+        "protocol","event_type","status","bytes"
+    ])
 
 # ── Load data ────────────────────────────────────────────────────────────────
 with st.spinner("Loading log data…"):
     logs = _load_logs()
 
-logs["timestamp"] = pd.to_datetime(logs["timestamp"])
-logs = logs.sort_values("timestamp", ascending=False).reset_index(drop=True)
+if logs.empty:
+    st.warning("⚠️ No logs available. Please load or upload a dataset on the Home page.")
+    st.stop()
+
+# Ensure timestamp is datetime
+logs["timestamp"] = pd.to_datetime(logs["timestamp"], errors="coerce")
+logs = logs.dropna(subset=["timestamp"]).sort_values("timestamp", ascending=False).reset_index(drop=True)
 
 # ── Sidebar filters ──────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🔍 Log Filters")
+    st.markdown("## 🔍 Log Stream Filters")
     st.divider()
 
-    min_ts = logs["timestamp"].min().to_pydatetime()
-    max_ts = logs["timestamp"].max().to_pydatetime()
+    min_ts = logs["timestamp"].min().date() if not logs.empty else datetime.now().date()
+    max_ts = logs["timestamp"].max().date() if not logs.empty else datetime.now().date()
 
     date_range = st.date_input("📅 Date range",
-        value=(min_ts.date(), max_ts.date()),
-        min_value=min_ts.date(), max_value=max_ts.date())
+        value=(min_ts, max_ts),
+        min_value=min_ts, max_value=max_ts)
 
-    event_types = ["All"] + sorted(logs["event_type"].unique().tolist())
-    sel_events = st.multiselect("📌 Event type", options=event_types[1:],
-                                 default=[], placeholder="All event types")
+    # Event types from data
+    avail_events = sorted([str(x) for x in logs["event_type"].dropna().unique().tolist()])
+    sel_events = st.multiselect("📌 Event type", options=avail_events, default=[], placeholder="All event types")
 
-    sel_status = st.selectbox("✅ Status", ["All","Success","Failure"])
+    # Dynamic status options based on actual values in current dataset
+    raw_statuses = [str(x) for x in logs["status"].dropna().unique().tolist()]
+    status_options = ["All"] + sorted(list(set(raw_statuses)))
+    sel_status = st.selectbox("✅ Status", status_options)
 
-    protocols = sorted(logs["protocol"].unique().tolist())
-    sel_proto = st.multiselect("🔌 Protocol", options=protocols, default=[],
-                                placeholder="All protocols")
+    # Protocols
+    avail_protocols = sorted([str(x) for x in logs["protocol"].dropna().unique().tolist()]) if "protocol" in logs.columns else []
+    sel_proto = st.multiselect("🔌 Protocol", options=avail_protocols, default=[], placeholder="All protocols")
 
-    src_ip_filter = st.text_input("🌐 Source IP (contains)", placeholder="e.g. 45.33")
+    src_ip_filter = st.text_input("🌐 Source IP (contains)", placeholder="e.g. 192.168 or 45.33")
 
     st.divider()
-    st.caption(f"Total records: {len(logs):,}")
+    active_dataset = st.session_state.get("active_dataset_name", "Active Stream")
+    st.caption(f"Active dataset: `{active_dataset}`")
+    st.caption(f"Total records in dataset: {len(logs):,}")
 
 
-# ── Apply filters ─────────────────────────────────────────────────────────────
+# ── Apply filters robustly ────────────────────────────────────────────────────
 filtered = logs.copy()
 
-if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
-    d0, d1 = date_range
-    filtered = filtered[
-        (filtered["timestamp"].dt.date >= d0) &
-        (filtered["timestamp"].dt.date <= d1)
-    ]
+# Date filter
+if isinstance(date_range, (list, tuple)):
+    if len(date_range) == 2:
+        d0, d1 = date_range
+        filtered = filtered[(filtered["timestamp"].dt.date >= d0) & (filtered["timestamp"].dt.date <= d1)]
+    elif len(date_range) == 1:
+        d0 = date_range[0]
+        filtered = filtered[filtered["timestamp"].dt.date == d0]
 
+# Event type filter
 if sel_events:
-    filtered = filtered[filtered["event_type"].isin(sel_events)]
+    filtered = filtered[filtered["event_type"].astype(str).isin(sel_events)]
 
+# Status filter (case-insensitive and exact match compatible)
 if sel_status != "All":
-    filtered = filtered[filtered["status"] == sel_status]
+    filtered = filtered[filtered["status"].astype(str).str.lower() == sel_status.lower()]
 
-if sel_proto:
-    filtered = filtered[filtered["protocol"].isin(sel_proto)]
+# Protocol filter
+if sel_proto and "protocol" in filtered.columns:
+    filtered = filtered[filtered["protocol"].astype(str).isin(sel_proto)]
 
-if src_ip_filter.strip():
-    filtered = filtered[filtered["source_ip"].str.contains(src_ip_filter.strip(), na=False)]
+# Source IP filter
+if src_ip_filter.strip() and "source_ip" in filtered.columns:
+    filtered = filtered[filtered["source_ip"].astype(str).str.contains(src_ip_filter.strip(), case=False, na=False)]
 
 # ── Page header ──────────────────────────────────────────────────────────────
-st.markdown("# 📋 Log Monitoring — Security Event Stream")
-st.caption(f"Showing {len(filtered):,} events · filtered from {len(logs):,} total · {datetime.now().strftime('%H:%M:%S')}")
+st.markdown("# 📋 Log Monitoring & Telemetry Stream")
+st.caption(f"Displaying {len(filtered):,} matching logs · Filtered from {len(logs):,} total · Dataset: {active_dataset}")
 st.markdown("---")
 
-# ── Metrics row ───────────────────────────────────────────────────────────────
-total_ev    = len(filtered)
-fail_count  = int((filtered["status"]=="Failure").sum())
-fail_rate   = round(fail_count / max(total_ev, 1) * 100, 1)
-uniq_src    = filtered["source_ip"].nunique()
+# ── Metrics row with exact Success / Failure analytics ────────────────────────
+total_ev   = len(filtered)
+status_series = filtered["status"].astype(str).str.lower() if "status" in filtered.columns else pd.Series([])
+
+success_cnt = int(status_series.isin(["success", "ok"]).sum())
+fail_cnt    = int(status_series.isin(["failed", "failure", "rejected", "error"]).sum())
+other_cnt   = total_ev - (success_cnt + fail_cnt)
+
+success_rate = round(success_cnt / max(total_ev, 1) * 100, 1)
+fail_rate    = round(fail_cnt / max(total_ev, 1) * 100, 1)
+uniq_src     = filtered["source_ip"].nunique() if "source_ip" in filtered.columns else 0
 
 m1, m2, m3, m4 = st.columns(4)
-def _metric(col, icon, label, val, color="#00d4ff"):
+def _metric(col, icon, label, val, sublabel="", color="#00d4ff"):
     col.markdown(f"""
     <div class="kpi-card">
       <div style="font-size:1.5rem;">{icon}</div>
       <div class="kpi-value" style="color:{color};">{val}</div>
       <div class="kpi-label">{label}</div>
+      <div style="font-size:0.75rem; color:#9ca3af; margin-top:2px;">{sublabel}</div>
     </div>""", unsafe_allow_html=True)
 
-_metric(m1,"📋","Total Events",     f"{total_ev:,}")
-_metric(m2,"✅","Filtered Events",  f"{total_ev:,}",    "#22c55e")
-_metric(m3,"❌","Failure Rate",     f"{fail_rate}%",    "#ef4444")
-_metric(m4,"🌐","Unique Source IPs",f"{uniq_src:,}",    "#a78bfa")
+_metric(m1, "📋", "Matching Events", f"{total_ev:,}", f"of {len(logs):,} in dataset")
+_metric(m2, "✅", "Success Events",  f"{success_cnt:,}", f"{success_rate}% success rate", "#22c55e")
+_metric(m3, "❌", "Failed / Rejected", f"{fail_cnt:,}", f"{fail_rate}% failure rate", "#ef4444" if fail_cnt > 0 else "#22c55e")
+_metric(m4, "🌐", "Unique Source IPs", f"{uniq_src:,}", "Distinct senders", "#a78bfa")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Text search across full dataframe ────────────────────────────────────────
+# ── Live Telemetry Analysis Report (Answers exactly what user requested) ─────
+with st.expander("📄 View Filtered Telemetry Stream Report", expanded=True):
+    rep_lines = []
+    rep_lines.append(f"FILTERED LOG TELEMETRY REPORT — Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    rep_lines.append(f"Applied Filter Status : {sel_status.upper()}")
+    rep_lines.append(f"Applied Date Range    : {date_range}")
+    rep_lines.append(f"Event Types Filtered  : {sel_events if sel_events else 'ALL'}")
+    rep_lines.append(f"Total Matches         : {total_ev:,} records")
+    rep_lines.append(f"Success Count (Rate)  : {success_cnt:,} ({success_rate}%)")
+    rep_lines.append(f"Failure Count (Rate)  : {fail_cnt:,} ({fail_rate}%)")
+    if other_cnt > 0:
+        rep_lines.append(f"Other Statuses Count  : {other_cnt:,}")
+    if not filtered.empty and "source_ip" in filtered.columns:
+        top_talkers = filtered["source_ip"].value_counts().head(3).to_dict()
+        rep_lines.append(f"Top Active Source IPs : {', '.join([f'{k} ({v} events)' for k, v in top_talkers.items()])}")
+    
+    rep_text = "\n".join(rep_lines)
+    st.markdown(f'<div class="report-summary-box">{rep_text}</div>', unsafe_allow_html=True)
+
+# ── Text search across all columns ────────────────────────────────────────────
 col_search, col_btn = st.columns([5, 1])
 with col_search:
-    global_search = st.text_input("🔍 Search all columns", placeholder="Search IPs, ports, protocols…", label_visibility="collapsed")
-with col_btn:
-    st.markdown("<br>", unsafe_allow_html=True)
+    global_search = st.text_input("🔍 Quick search table", placeholder="Filter by IP, port, protocol, user, or event type…")
 
 if global_search.strip():
     mask = filtered.apply(lambda row: row.astype(str).str.contains(global_search.strip(), case=False, na=False).any(), axis=1)
     filtered = filtered[mask]
 
-# ── Paginated data table ──────────────────────────────────────────────────────
+# ── Data table with pagination and styling ────────────────────────────────────
 st.markdown('<div class="section-hdr">📊 Security Event Table</div>', unsafe_allow_html=True)
 
 PAGE_SIZE = 50
 total_pages = max(1, (len(filtered) - 1) // PAGE_SIZE + 1)
-page_col, exp_col, sus_col = st.columns([3, 1, 1])
+page_col, exp_col = st.columns([4, 1])
 
 with page_col:
-    page_num = st.number_input("Page", min_value=1, max_value=total_pages, value=1, step=1,
-                                label_visibility="collapsed")
+    page_num = st.number_input("Page selector", min_value=1, max_value=total_pages, value=1, step=1, label_visibility="collapsed")
 with exp_col:
     csv_bytes = filtered.to_csv(index=False).encode()
-    st.download_button("📥 Export CSV", data=csv_bytes, file_name="filtered_logs.csv",
-                        mime="text/csv", use_container_width=True)
-with sus_col:
-    if st.button("⚠️ Flag Page", use_container_width=True):
-        st.warning("Selected page flagged as suspicious.")
+    st.download_button("📥 Export Filtered CSV", data=csv_bytes, file_name=f"filtered_logs_{sel_status}.csv", mime="text/csv", use_container_width=True)
 
 start_idx = (page_num - 1) * PAGE_SIZE
 page_df = filtered.iloc[start_idx: start_idx + PAGE_SIZE].copy()
 
-# ── Conditional formatting via style ─────────────────────────────────────────
+# Column formatting
 DISPLAY_COLS = ["timestamp","source_ip","destination_ip","source_port",
-                "destination_port","protocol","event_type","status","bytes_transferred"]
+                "destination_port","protocol","user","event_type","status","bytes","bytes_transferred"]
 avail_cols = [c for c in DISPLAY_COLS if c in page_df.columns]
 display_df = page_df[avail_cols].copy()
-display_df["timestamp"] = display_df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+if "timestamp" in display_df.columns:
+    display_df["timestamp"] = display_df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
 def _color_status(val):
-    if val == "Failure":
-        return "background-color:#3b0000;color:#fca5a5;font-weight:600;"
-    elif val == "Success":
-        return "background-color:#003b1f;color:#6ee7b7;font-weight:600;"
+    v = str(val).lower()
+    if v in ["failure", "failed", "rejected"]:
+        return "background-color:#450a0a;color:#fca5a5;font-weight:600;"
+    elif v in ["success", "ok"]:
+        return "background-color:#052e16;color:#86efac;font-weight:600;"
     return ""
 
 def _color_bytes(val):
     try:
         v = int(val)
-        if v > 100000: return "color:#ef4444;font-weight:600;"
-        if v > 50000:  return "color:#f97316;"
+        if v > 10000000: return "color:#ef4444;font-weight:700;" # > 10MB
+        if v > 100000: return "color:#f97316;font-weight:600;"
     except: pass
     return ""
 
-# ── Table display ─────────────────────────────────────────
-byte_target = "bytes" if "bytes" in display_df.columns else ("bytes_transferred" if "bytes_transferred" in display_df.columns else None)
+byte_col = "bytes" if "bytes" in display_df.columns else ("bytes_transferred" if "bytes_transferred" in display_df.columns else None)
 
 def _style_df(styler):
     if "status" in display_df.columns:
         styler = styler.map(_color_status, subset=["status"])
-    if byte_target:
-        styler = styler.map(_color_bytes, subset=[byte_target])
-        styler = styler.format({byte_target: "{:,}"})
+    if byte_col:
+        styler = styler.map(_color_bytes, subset=[byte_col])
+        styler = styler.format({byte_col: "{:,}"})
     return styler
 
-st.dataframe(display_df.style.pipe(_style_df), use_container_width=True, height=450)
-
-st.caption(f"Page {page_num} of {total_pages} · {len(filtered):,} matching events")
-
-# ── Event timeline mini-chart ─────────────────────────────────────────────────
-st.markdown("<br>", unsafe_allow_html=True)
-st.markdown('<div class="section-hdr">📈 Event Timeline</div>', unsafe_allow_html=True)
-
-timeline_df = filtered.copy()
-timeline_df["bucket"] = timeline_df["timestamp"].dt.floor("30min")
-tl = timeline_df.groupby(["bucket","event_type"]).size().reset_index(name="count")
-
-ET_COLORS = {
-    "Login Attempt":   "#ef4444",
-    "Port Scan":       "#f97316",
-    "File Access":     "#3b82f6",
-    "Data Transfer":   "#a78bfa",
-    "Connection":      "#22c55e",
-    "DNS Query":       "#06b6d4",
-}
-
-fig_tl = go.Figure()
-for et in tl["event_type"].unique():
-    sub = tl[tl["event_type"]==et]
-    color = ET_COLORS.get(et, "#6b7280")
-    fig_tl.add_trace(go.Bar(
-        x=sub["bucket"], y=sub["count"], name=et,
-        marker_color=color, opacity=0.85,
-    ))
-fig_tl.update_layout(**CHART_LAYOUT, height=240, barmode="stack",
-    xaxis=dict(gridcolor="#1f2937"),
-    yaxis=dict(gridcolor="#1f2937", title="Event count"),
-    legend=dict(orientation="h", yanchor="bottom", y=1, xanchor="right", x=1,
-                bgcolor="rgba(0,0,0,0)"))
-st.plotly_chart(fig_tl, use_container_width=True)
-
-# ── Failure hotspot table ─────────────────────────────────────────────────────
-st.markdown('<div class="section-hdr">🔴 Top Failure Source IPs</div>', unsafe_allow_html=True)
-fail_df = filtered[filtered["status"]=="Failure"]
-top_fail = (fail_df.groupby("source_ip")
-            .agg(failure_count=("status","count"),
-                 distinct_ports=("destination_port","nunique"),
-                 protocols=("protocol", lambda x: ", ".join(x.unique()[:3])))
-            .reset_index()
-            .sort_values("failure_count", ascending=False)
-            .head(10))
-
-if not top_fail.empty:
-    st.dataframe(top_fail, use_container_width=True, height=280,
-                 column_config={
-                     "failure_count": st.column_config.ProgressColumn(
-                         "Failure Count", min_value=0, max_value=int(top_fail["failure_count"].max())),
-                 })
+if not display_df.empty:
+    st.dataframe(display_df.style.pipe(_style_df), use_container_width=True, height=450)
 else:
-    st.info("No failure events in current filter.")
+    st.info(f"No records match status = '{sel_status}' and the selected criteria.")
+
+st.caption(f"Displaying page {page_num} of {total_pages} · {len(filtered):,} records match current filter criteria")
+
+# ── Event distribution timeline & Top failers ─────────────────────────────────
+if not filtered.empty:
+    st.markdown("<br>", unsafe_allow_html=True)
+    c_tl, c_fail = st.columns([3, 2])
+    
+    with c_tl:
+        st.markdown('<div class="section-hdr">📈 Event Stream Frequency</div>', unsafe_allow_html=True)
+        time_copy = filtered.copy()
+        time_copy["bucket"] = time_copy["timestamp"].dt.floor("15min")
+        tl_counts = time_copy.groupby(["bucket", "status"]).size().reset_index(name="count")
+        
+        fig_tl = px.bar(
+            tl_counts, x="bucket", y="count", color="status",
+            color_discrete_map={"success": "#22c55e", "failed": "#ef4444", "rejected": "#f59e0b", "Failure": "#ef4444", "Success": "#22c55e"}
+        )
+        fig_tl.update_layout(
+            paper_bgcolor="#111827", plot_bgcolor="#111827",
+            font=dict(color="#e2e8f0"), height=260, margin=dict(t=10, b=10, l=10, r=10),
+            xaxis_title="Time Window", yaxis_title="Events"
+        )
+        st.plotly_chart(fig_tl, use_container_width=True)
+
+    with c_fail:
+        st.markdown('<div class="section-hdr">🔴 Top Failure / Rejected Sources</div>', unsafe_allow_html=True)
+        fail_events = filtered[filtered["status"].astype(str).str.lower().isin(["failed", "failure", "rejected"])]
+        if not fail_events.empty and "source_ip" in fail_events.columns:
+            fail_sources = fail_events["source_ip"].value_counts().head(8).reset_index()
+            fail_sources.columns = ["source_ip", "failures"]
+            fig_fail = px.bar(
+                fail_sources, y="source_ip", x="failures", orientation="h",
+                color="failures", color_continuous_scale="Reds"
+            )
+            fig_fail.update_layout(
+                paper_bgcolor="#111827", plot_bgcolor="#111827",
+                font=dict(color="#e2e8f0"), height=260, margin=dict(t=10, b=10, l=10, r=10),
+                coloraxis_showscale=False, yaxis=dict(autorange="reversed")
+            )
+            st.plotly_chart(fig_fail, use_container_width=True)
+        else:
+            st.success("✅ Zero failed or rejected events in current selection!")
