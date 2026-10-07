@@ -91,19 +91,27 @@ with col_f2:
     )
 
 filtered_alerts = alerts_df.copy()
+
+# Apply time filter
+if time_filter != "All Time (Last 24h)" and "timestamp" in filtered_alerts.columns and not filtered_alerts.empty:
+    hrs = 6 if "6" in time_filter else 1
+    cutoff = datetime.now() - timedelta(hours=hrs)
+    filtered_alerts = filtered_alerts[filtered_alerts["timestamp"] >= cutoff]
+
+# Apply severity filter case-insensitively
 if selected_severities and "severity" in filtered_alerts.columns:
-    filtered_alerts = filtered_alerts[filtered_alerts["severity"].isin(selected_severities)]
+    filtered_alerts = filtered_alerts[filtered_alerts["severity"].astype(str).str.upper().isin([s.upper() for s in selected_severities])]
 
 # ---------------------------------------------------------------------------
 # Row 1: Key Metrics
 # ---------------------------------------------------------------------------
-top_threat = filtered_alerts["threat_type"].mode().iloc[0] if not filtered_alerts.empty else "N/A"
-top_ip = filtered_alerts["source_ip"].mode().iloc[0] if not filtered_alerts.empty else "N/A"
-avg_risk = int(filtered_alerts["risk_score"].mean()) if not filtered_alerts.empty else 0
+top_threat = str(filtered_alerts["threat_type"].mode().iloc[0]).upper() if not filtered_alerts.empty and "threat_type" in filtered_alerts.columns else "NONE"
+top_ip = filtered_alerts["source_ip"].mode().iloc[0] if not filtered_alerts.empty and "source_ip" in filtered_alerts.columns else "NONE"
+avg_risk = int(filtered_alerts["risk_score"].mean()) if not filtered_alerts.empty and "risk_score" in filtered_alerts.columns else 0
 
 m1, m2, m3, m4 = st.columns(4)
 with m1:
-    st.markdown(f'<div class="metric-box"><div class="metric-val">{len(filtered_alerts)}</div><div class="metric-lbl">Total Alerts</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-box"><div class="metric-val">{len(filtered_alerts)}</div><div class="metric-lbl">Active Detections</div></div>', unsafe_allow_html=True)
 with m2:
     st.markdown(f'<div class="metric-box"><div class="metric-val" style="color:#ef4444;">{top_threat}</div><div class="metric-lbl">Most Frequent Threat</div></div>', unsafe_allow_html=True)
 with m3:
@@ -112,6 +120,27 @@ with m4:
     st.markdown(f'<div class="metric-box"><div class="metric-val" style="color:#10b981;">{avg_risk}/100</div><div class="metric-lbl">Mean Risk Index</div></div>', unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Executive Threat Intelligence Summary Report Box
+# ---------------------------------------------------------------------------
+with st.expander("📄 View Threat Intelligence & Analytical Report", expanded=True):
+    r_lines = []
+    r_lines.append(f"THREAT ANALYTICS REPORT — Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    r_lines.append(f"Time Horizon Filter   : {time_filter}")
+    r_lines.append(f"Severity Filter       : {', '.join(selected_severities) if selected_severities else 'ALL'}")
+    r_lines.append(f"Total Threat Matches  : {len(filtered_alerts)} incidents")
+    if not filtered_alerts.empty:
+        r_lines.append(f"Primary Attack Vector : {top_threat}")
+        r_lines.append(f"Chief Source IP       : {top_ip}")
+        r_lines.append(f"Average Threat Score  : {avg_risk} / 100")
+        if "threat_type" in filtered_alerts.columns:
+            t_counts = filtered_alerts["threat_type"].value_counts().to_dict()
+            r_lines.append(f"Vectors Breakdown     : {', '.join([f'{k}: {v}' for k, v in t_counts.items()])}")
+    else:
+        r_lines.append("No security anomalies or attack vectors meet the selected filter criteria.")
+    r_str = "\n".join(r_lines)
+    st.markdown(f'<div style="background:#111827;border:1px solid #374151;border-radius:8px;padding:14px;color:#e2e8f0;font-family:monospace;white-space:pre-wrap;">{r_str}</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Row 2: Charts (Threat Type & Severity Distribution & Risk Score Histogram)
