@@ -131,13 +131,14 @@ with st.spinner("Loading threat intelligence data…"):
     logs, alerts = _load()
 
 logs["timestamp"] = pd.to_datetime(logs["timestamp"])
-alerts["timestamp"] = pd.to_datetime(alerts["timestamp"])
+if not alerts.empty and "timestamp" in alerts.columns:
+    alerts["timestamp"] = pd.to_datetime(alerts["timestamp"])
 
 # ── ROW 1 — KPIs ─────────────────────────────────────────────────────────────
 total_events   = len(logs)
 total_threats  = len(alerts)
-crit_count     = int((alerts["severity"] == "CRITICAL").sum())
-active_inc     = int(alerts["status"].isin(["New","Reviewing"]).sum())
+crit_count     = int((alerts["severity"].astype(str).str.upper() == "CRITICAL").sum()) if "severity" in alerts.columns else 0
+active_inc     = int(alerts["status"].astype(str).str.upper().isin(["NEW","REVIEWING","UNDER REVIEW"]).sum()) if "status" in alerts.columns else 0
 
 c1, c2, c3, c4 = st.columns(4)
 def _kpi(col, icon, label, val, color):

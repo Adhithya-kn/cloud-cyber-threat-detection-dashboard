@@ -232,7 +232,8 @@ def create_alert(detection_dict: dict) -> dict:
         "timestamp":         now_utc.isoformat(),
         "threat_type":       threat_type,
         "source_ip":         str(detection_dict.get("source_ip", "")),
-        "target_ip":         str(detection_dict.get("target_ip", "")),
+        "target_ip":         str(detection_dict.get("target_ip") or detection_dict.get("destination_ip") or ""),
+        "destination_ip":    str(detection_dict.get("destination_ip") or detection_dict.get("target_ip") or ""),
         "source_port":       detection_dict.get("source_port"),          # int or None
         "destination_port":  detection_dict.get("destination_port"),     # int or None
         "protocol":          str(detection_dict.get("protocol", "UNKNOWN")),

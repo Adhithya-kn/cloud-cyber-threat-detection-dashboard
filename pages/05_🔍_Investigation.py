@@ -74,11 +74,18 @@ st.markdown("Deep-dive forensic analysis, log correlation, and incident triage."
 # ---------------------------------------------------------------------------
 # Load Alerts & Logs
 # ---------------------------------------------------------------------------
-alerts_df = load_alerts("data/alerts.csv")
-logs_df = pd.DataFrame()
-if os.path.exists("data/demo_security_logs.csv"):
+if "alerts_df" in st.session_state and not st.session_state["alerts_df"].empty:
+    alerts_df = st.session_state["alerts_df"].copy()
+else:
+    alerts_df = load_alerts("data/alerts.csv")
+
+if "logs_df" in st.session_state and not st.session_state["logs_df"].empty:
+    logs_df = st.session_state["logs_df"].copy()
+elif os.path.exists("data/demo_security_logs.csv"):
     logs_df = load_data("data/demo_security_logs.csv")
     logs_df = normalize_events(logs_df)
+else:
+    logs_df = pd.DataFrame()
 
 if alerts_df.empty:
     st.warning("⚠️ No alerts currently in store. Generate or run detections from the home page first.")

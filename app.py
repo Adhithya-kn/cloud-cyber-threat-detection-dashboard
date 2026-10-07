@@ -7,8 +7,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
 from datetime import datetime, timedelta
 import os
+import io
 import sys
 
 # ── Path setup ─────────────────────────────────────────────────────────────
@@ -88,6 +90,18 @@ footer { visibility: hidden; }
     letter-spacing:0.05em; margin-bottom:4px;
 }
 .sidebar-tagline { font-size:0.75rem; color:#6b7280; margin-bottom:16px; }
+
+/* ── Report Box ── */
+.report-box {
+    background: #111827;
+    border: 1px solid #374151;
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 15px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    color: #e2e8f0;
+}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
@@ -120,130 +134,104 @@ except Exception:
     _modules_ok["risk_score"] = False
 
 try:
-    from utils.alert_manager import load_alerts, get_alerts_summary
+    from utils.alert_manager import (
+        load_alerts, get_alerts_summary, create_alert,
+        add_alert, save_alerts
+    )
     _modules_ok["alert_manager"] = True
 except Exception:
     _modules_ok["alert_manager"] = False
 
 
-# ── Synthetic data generator (fallback) ─────────────────────────────────────
-@st.cache_data(ttl=300)
-def _generate_synthetic_logs(n: int = 2000) -> pd.DataFrame:
-    rng = np.random.default_rng(42)
-    base = datetime.now() - timedelta(hours=24)
-    timestamps = [base + timedelta(seconds=int(s)) for s in np.sort(rng.integers(0, 86400, n))]
+# ── Full Processing Function for Any Uploaded or Selected Data ───────────────
+def process_dataframe(df_input: pd.DataFrame, source_name: str = "Uploaded Dataset"):
+    """
+    Runs the complete end-to-end detection, ML anomaly, risk scoring,
+    and alert creation pipeline on any provided DataFrame.
+    """
+    if "normalize_events" in globals():
+        df_norm = normalize_events(df_input)
+    else:
+        df_norm = df_input.copy()
 
-    src_ips = [f"192.168.{rng.integers(1,10)}.{rng.integers(1,254)}" for _ in range(n)]
-    # inject some "attacker" IPs
-    attacker_ips = ["45.33.32.156", "23.95.110.42", "198.199.85.30", "104.21.44.78"]
-    for i in rng.choice(n, size=300, replace=False):
-        src_ips[i] = attacker_ips[rng.integers(0, len(attacker_ips))]
+    if "extract_features" in globals():
+        df_feat = extract_features(df_norm)
+    else:
+        df_feat = df_norm.copy()
 
-    dst_ips = [f"10.0.{rng.integers(0,4)}.{rng.integers(1,50)}" for _ in range(n)]
-    protocols = rng.choice(["TCP", "UDP", "ICMP", "HTTP", "HTTPS", "SSH", "FTP"], n,
-                            p=[0.35, 0.20, 0.05, 0.15, 0.15, 0.07, 0.03])
-    event_types = rng.choice(
-        ["Login Attempt", "Port Scan", "File Access", "Data Transfer", "Connection", "DNS Query"],
-        n, p=[0.25, 0.15, 0.20, 0.10, 0.20, 0.10]
-    )
-    statuses = rng.choice(["Success", "Failure"], n, p=[0.65, 0.35])
-    bytes_t = rng.integers(64, 150000, n)
-    src_ports = rng.integers(1024, 65535, n)
-    dst_ports = rng.choice([22, 80, 443, 3306, 3389, 8080, 21, 25, 53, 8443], n)
+    rule_dets = []
+    if "run_all_rules" in globals():
+        try:
+            rule_dets = run_all_rules(df_feat)
+        except Exception as e:
+            st.warning(f"Rule detection warning: {e}")
 
-    return pd.DataFrame({
-        "timestamp": timestamps,
-        "source_ip": src_ips,
-        "destination_ip": dst_ips,
-        "source_port": src_ports,
-        "destination_port": dst_ports,
-        "protocol": protocols,
-        "event_type": event_types,
-        "status": statuses,
-        "bytes_transferred": bytes_t,
-    })
+    ml_dets = []
+    if "train_model" in globals() and "detect_anomalies" in globals():
+        try:
+            bundle = train_model(df_feat)
+            scored = detect_anomalies(df_feat, bundle)
+            ml_dets = get_anomaly_detections(scored)
+        except Exception as e:
+            st.warning(f"ML engine warning: {e}")
 
+    all_dets = rule_dets + ml_dets
+    enriched = []
+    if "process_all_detections" in globals():
+        try:
+            enriched = process_all_detections(all_dets)
+        except Exception as e:
+            enriched = all_dets
+    else:
+        enriched = all_dets
 
-@st.cache_data(ttl=300)
-def _generate_synthetic_alerts(n: int = 120) -> pd.DataFrame:
-    rng = np.random.default_rng(7)
-    base = datetime.now() - timedelta(hours=24)
-    timestamps = [base + timedelta(seconds=int(s)) for s in np.sort(rng.integers(0, 86400, n))]
-    attacker_ips = ["45.33.32.156", "23.95.110.42", "198.199.85.30", "104.21.44.78",
-                    "91.195.240.117", "185.220.101.33"]
-    dst_ips = [f"10.0.{rng.integers(0,4)}.{rng.integers(1,50)}" for _ in range(n)]
-    threat_types = rng.choice(
-        ["Brute Force", "Port Scan", "Abnormal Traffic", "ML Anomaly", "Data Exfiltration", "Ransomware Indicator"],
-        n, p=[0.30, 0.25, 0.15, 0.15, 0.10, 0.05]
-    )
-    severities = rng.choice(["CRITICAL", "HIGH", "MEDIUM", "LOW"], n, p=[0.10, 0.25, 0.40, 0.25])
-    risk_scores = np.clip(rng.normal(60, 25, n), 1, 100).astype(int)
-    statuses = rng.choice(["New", "Reviewing", "Resolved", "False Positive"], n, p=[0.40, 0.25, 0.25, 0.10])
-    reasons = {
-        "Brute Force": "Multiple failed login attempts detected from single source IP.",
-        "Port Scan": "Sequential port probing activity detected across multiple ports.",
-        "Abnormal Traffic": "Unusual byte transfer volume exceeds baseline threshold.",
-        "ML Anomaly": "Isolation Forest model flagged unusual behavioural pattern.",
-        "Data Exfiltration": "Large outbound data transfer to external IP detected.",
-        "Ransomware Indicator": "File encryption pattern detected on internal host.",
-    }
-    suggested = {
-        "Brute Force": "Block source IP. Enable account lockout policy. Review user accounts.",
-        "Port Scan": "Firewall block source IP. Review open ports. Enable IDS rules.",
-        "Abnormal Traffic": "Throttle connection. Investigate host for malware. Review DLP policies.",
-        "ML Anomaly": "Investigate source host. Correlate with other events. Escalate if confirmed.",
-        "Data Exfiltration": "Immediately block outbound connection. Isolate host. Initiate IR.",
-        "Ransomware Indicator": "ISOLATE HOST IMMEDIATELY. Engage IR team. Restore from backup.",
-    }
-
-    df = pd.DataFrame({
-        "alert_id": [f"ALERT-{1000+i}" for i in range(n)],
-        "timestamp": timestamps,
-        "source_ip": [attacker_ips[rng.integers(0, len(attacker_ips))] for _ in range(n)],
-        "destination_ip": dst_ips,
-        "threat_type": threat_types,
-        "severity": severities,
-        "risk_score": risk_scores,
-        "status": statuses,
-        "detection_reason": [reasons[t] for t in threat_types],
-        "suggested_action": [suggested[t] for t in threat_types],
-        "rule_triggered": [f"RULE-{rng.integers(100,999)}" for _ in range(n)],
-    })
-    return df
-
-
-# ── Load / cache application data ───────────────────────────────────────────
-def _load_app_data():
-    """Load logs + alerts, using real files when available else synthetic."""
-    log_path = "data/demo_security_logs.csv"
-    alert_path = "data/alerts.csv"
-
-    # ─ Logs ─
-    if "logs_df" not in st.session_state:
-        if os.path.exists(log_path):
-            try:
-                df = pd.read_csv(log_path, parse_dates=["timestamp"])
-                st.session_state["logs_df"] = df
-            except Exception:
-                st.session_state["logs_df"] = _generate_synthetic_logs()
+    # Create alerts DataFrame
+    alert_rows = []
+    alerts_tracker = pd.DataFrame()
+    for det in enriched:
+        if "create_alert" in globals():
+            rec = create_alert(det)
+            alerts_tracker = add_alert(rec, alerts_tracker)
         else:
-            st.session_state["logs_df"] = _generate_synthetic_logs()
+            alert_rows.append(det)
 
-    # ─ Alerts ─
-    if "alerts_df" not in st.session_state:
-        if os.path.exists(alert_path):
-            try:
-                df = pd.read_csv(alert_path, parse_dates=["timestamp"])
-                st.session_state["alerts_df"] = df
-            except Exception:
-                st.session_state["alerts_df"] = _generate_synthetic_alerts()
-        else:
-            st.session_state["alerts_df"] = _generate_synthetic_alerts()
+    if not alerts_tracker.empty:
+        alerts_final = alerts_tracker
+    elif alert_rows:
+        alerts_final = pd.DataFrame(alert_rows)
+    else:
+        alerts_final = pd.DataFrame(columns=[
+            "alert_id", "timestamp", "threat_type", "source_ip",
+            "destination_ip", "severity", "risk_score", "status",
+            "reason", "suggested_action"
+        ])
+
+    # Save to session_state so all other pages immediately reflect this dataset
+    st.session_state["logs_df"] = df_feat
+    st.session_state["alerts_df"] = alerts_final
+    st.session_state["active_dataset_name"] = source_name
+
+    # Save alerts to data/alerts.csv for persistence
+    try:
+        if not alerts_final.empty and "save_alerts" in globals():
+            save_alerts(alerts_final, "data/alerts.csv")
+    except Exception:
+        pass
+
+    return df_feat, alerts_final
 
 
-_load_app_data()
-logs_df: pd.DataFrame = st.session_state["logs_df"]
-alerts_df: pd.DataFrame = st.session_state["alerts_df"]
+# ── Initialize session state if empty ─────────────────────────────────────────
+if "logs_df" not in st.session_state or "alerts_df" not in st.session_state:
+    init_path = "data/demo_security_logs.csv"
+    if os.path.exists(init_path):
+        raw_init = pd.read_csv(init_path)
+        process_dataframe(raw_init, "demo_security_logs.csv")
+    else:
+        st.session_state["logs_df"] = pd.DataFrame()
+        st.session_state["alerts_df"] = pd.DataFrame()
+        st.session_state["active_dataset_name"] = "None"
+
 
 # ── Sidebar ─────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -252,61 +240,100 @@ with st.sidebar:
     st.divider()
 
     st.markdown("**🗂 Navigation**")
-    st.info("Use the pages in the sidebar to explore:\n- 📊 Overview\n- 📋 Log Monitoring\n- 🚨 Alerts\n- 📈 Analytics\n- 🔍 Investigation")
+    st.info("Use the pages above to explore:\n- 📊 Overview\n- 📋 Log Monitoring\n- 🚨 Alerts\n- 📈 Analytics\n- 🔍 Investigation")
     st.divider()
 
-    st.markdown("**⚙️ Data Source**")
-    data_source = st.selectbox("Select data file", ["demo_security_logs.csv (default)", "Custom upload"])
+    st.markdown("### 📥 Dataset Selection & Upload")
+    
+    # Pre-packaged demo datasets dropdown
+    dataset_choice = st.selectbox(
+        "Choose Demo Dataset or Upload:",
+        [
+            "📂 Upload Custom CSV/JSON",
+            "1️⃣ Normal Baseline Traffic (dataset_1)",
+            "2️⃣ SSH Brute-Force Incident (dataset_2)",
+            "3️⃣ Multi-Vector Breach (dataset_3)",
+            "🌟 Full 610-Log Demo (demo_security_logs)"
+        ]
+    )
+
+    if dataset_choice == "📂 Upload Custom CSV/JSON":
+        uploaded_file = st.file_uploader("Upload CSV or JSON Security Log", type=["csv", "json"])
+        if uploaded_file is not None:
+            if st.button("⚡ Analyze Uploaded File", use_container_width=True, type="primary"):
+                with st.spinner("Parsing & analyzing uploaded telemetry..."):
+                    try:
+                        if uploaded_file.name.endswith(".csv"):
+                            uploaded_df = pd.read_csv(uploaded_file)
+                        else:
+                            uploaded_df = pd.read_json(uploaded_file)
+                        process_dataframe(uploaded_df, f"Uploaded: {uploaded_file.name}")
+                        st.success(f"Analysis complete for {uploaded_file.name}!")
+                        st.rerun()
+                    except Exception as err:
+                        st.error(f"Error parsing file: {err}")
+
+    else:
+        file_map = {
+            "1️⃣ Normal Baseline Traffic (dataset_1)": "data/dataset_1_normal_baseline.csv",
+            "2️⃣ SSH Brute-Force Incident (dataset_2)": "data/dataset_2_bruteforce_attack.csv",
+            "3️⃣ Multi-Vector Breach (dataset_3)": "data/dataset_3_multivector_breach.csv",
+            "🌟 Full 610-Log Demo (demo_security_logs)": "data/demo_security_logs.csv",
+        }
+        selected_file_path = file_map.get(dataset_choice)
+        if st.button(f"⚡ Load & Analyze Selected", use_container_width=True, type="primary"):
+            with st.spinner("Analyzing selected dataset through SOC pipeline..."):
+                if os.path.exists(selected_file_path):
+                    chosen_df = pd.read_csv(selected_file_path)
+                    process_dataframe(chosen_df, dataset_choice)
+                    st.success("Analysis complete!")
+                    st.rerun()
+                else:
+                    st.error(f"File not found: {selected_file_path}")
 
     st.divider()
-    if st.button("🚀 Run Full Detection", use_container_width=True, type="primary"):
-        with st.spinner("Running full detection pipeline…"):
-            import time
-            time.sleep(1.5)
-            # Attempt real pipeline; fall back silently
-            ran_pipeline = False
-            if _modules_ok.get("log_parser") and _modules_ok.get("rules_engine"):
-                try:
-                    raw = load_data("data/demo_security_logs.csv")
-                    events = normalize_events(raw)
-                    features = extract_features(events)
-                    detections = run_all_rules(events)
-                    if _modules_ok.get("risk_score"):
-                        detections = process_all_detections(detections)
-                    st.session_state["alerts_df"] = detections
-                    ran_pipeline = True
-                except Exception:
-                    pass
-            if not ran_pipeline:
-                st.session_state["alerts_df"] = _generate_synthetic_alerts()
-                alerts_df = st.session_state["alerts_df"]
-            st.success("Detection complete!")
-            st.rerun()
-
-    st.divider()
-    st.caption(f"Last refresh: {datetime.now().strftime('%H:%M:%S')}")
-    if st.button("🔄 Refresh Data", use_container_width=True):
+    active_name = st.session_state.get("active_dataset_name", "Default")
+    st.markdown(f"**Current Active Data:** `{active_name}`")
+    
+    if st.button("🔄 Reset / Re-run Pipeline", use_container_width=True):
         st.cache_data.clear()
-        for k in ["logs_df", "alerts_df"]:
-            st.session_state.pop(k, None)
+        if os.path.exists("data/demo_security_logs.csv"):
+            process_dataframe(pd.read_csv("data/demo_security_logs.csv"), "demo_security_logs.csv")
         st.rerun()
 
-# ── Main header ─────────────────────────────────────────────────────────────
+logs_df = st.session_state.get("logs_df", pd.DataFrame())
+alerts_df = st.session_state.get("alerts_df", pd.DataFrame())
+
+# ── Main Header ─────────────────────────────────────────────────────────────
 st.markdown("""
-<div style='text-align:center; padding:20px 0 10px 0;'>
-  <span style='font-size:3rem; font-weight:900; color:#00d4ff; letter-spacing:0.05em;'>🛡️ CyberShield</span><br>
-  <span style='font-size:1.15rem; color:#9ca3af; letter-spacing:0.12em;'>
-      CLOUD CYBER THREAT DETECTION DASHBOARD
+<div style='text-align:center; padding:15px 0 10px 0;'>
+  <span style='font-size:2.8rem; font-weight:900; color:#00d4ff; letter-spacing:0.05em;'>🛡️ CyberShield</span><br>
+  <span style='font-size:1.1rem; color:#9ca3af; letter-spacing:0.12em;'>
+      CLOUD CYBER THREAT DETECTION & ANALYSIS ENGINE
   </span>
 </div>
 """, unsafe_allow_html=True)
-st.markdown("<hr style='border:1px solid #1e40af; margin:0 0 24px 0;'>", unsafe_allow_html=True)
 
-# ── KPI row ─────────────────────────────────────────────────────────────────
+active_dataset_badge = st.session_state.get("active_dataset_name", "None")
+st.markdown(
+    f"<div style='text-align:center; margin-bottom:15px;'><span style='background:#1e3a5f; color:#93c5fd; padding:4px 12px; border-radius:20px; font-size:0.85rem; font-weight:600;'>Active Dataset: {active_dataset_badge}</span></div>",
+    unsafe_allow_html=True
+)
+st.markdown("<hr style='border:1px solid #1e40af; margin:0 0 20px 0;'>", unsafe_allow_html=True)
+
+# ── KPI Row ─────────────────────────────────────────────────────────────────
 total_events = len(logs_df)
 total_threats = len(alerts_df)
-critical_count = int((alerts_df["severity"] == "CRITICAL").sum()) if "severity" in alerts_df.columns else 0
-active_incidents = int((alerts_df["status"].isin(["New", "Reviewing"])).sum()) if "status" in alerts_df.columns else 0
+
+crit_count = 0
+high_count = 0
+med_count = 0
+low_count = 0
+if not alerts_df.empty and "severity" in alerts_df.columns:
+    crit_count = int((alerts_df["severity"].str.upper() == "CRITICAL").sum())
+    high_count = int((alerts_df["severity"].str.upper() == "HIGH").sum())
+    med_count = int((alerts_df["severity"].str.upper() == "MEDIUM").sum())
+    low_count = int((alerts_df["severity"].str.upper() == "LOW").sum())
 
 c1, c2, c3, c4 = st.columns(4)
 
@@ -315,61 +342,134 @@ def _kpi(col, icon, label, value, color="#00d4ff", delta_text="", delta_pos=True
     delta_html = f'<div class="{delta_cls}">{delta_text}</div>' if delta_text else ""
     col.markdown(f"""
     <div class="kpi-card">
-      <div style="font-size:2rem;">{icon}</div>
+      <div style="font-size:1.8rem;">{icon}</div>
       <div class="kpi-value" style="color:{color};">{value:,}</div>
       <div class="kpi-label">{label}</div>
       {delta_html}
     </div>""", unsafe_allow_html=True)
 
-_kpi(c1, "🔵", "Total Log Events", total_events,   "#00d4ff", "↑ 12% vs yesterday")
-_kpi(c2, "🟡", "Threats Detected",  total_threats,  "#f59e0b", f"↑ {total_threats} new", True)
-_kpi(c3, "🔴", "Critical Alerts",   critical_count, "#ef4444", "⚠ Immediate attention", False)
-_kpi(c4, "🟣", "Active Incidents",  active_incidents,"#a78bfa", f"{active_incidents} open")
+_kpi(c1, "🔵", "Analyzed Log Events", total_events, "#00d4ff", f"Telemetry records")
+_kpi(c2, "🟡", "Threats Detected", total_threats, "#f59e0b", f"Total alerts flagged", True)
+_kpi(c3, "🔴", "Critical Alerts", crit_count, "#ef4444", "Urgent remediation required", False)
+_kpi(c4, "🟠", "High Severity", high_count, "#f97316", f"Priority investigation")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Real-time trend sparkline ────────────────────────────────────────────────
-st.markdown('<div class="section-header">📡 Live Threat Activity (Last 24 h)</div>', unsafe_allow_html=True)
+# ── Real-Time Automated Threat Intelligence Report ───────────────────────────
+st.markdown('<div class="section-header">📄 Automated Threat Intelligence & Analysis Report</div>', unsafe_allow_html=True)
 
-_df = alerts_df.copy()
-if "timestamp" in _df.columns:
-    _df["timestamp"] = pd.to_datetime(_df["timestamp"])
-    _df["hour"] = _df["timestamp"].dt.floor("h")
-    hourly = _df.groupby(["hour", "severity"]).size().reset_index(name="count")
+# Generate detailed text report according to the active dataset
+report_lines = []
+report_lines.append("=" * 80)
+report_lines.append(f"CYBERSHIELD THREAT ANALYSIS REPORT — {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+report_lines.append(f"Source Telemetry   : {active_dataset_badge}")
+report_lines.append(f"Events Ingested    : {total_events:,}")
+report_lines.append(f"Detections Triaged : {total_threats} alerts (Critical: {crit_count}, High: {high_count}, Medium: {med_count}, Low: {low_count})")
+report_lines.append("=" * 80)
+
+if total_threats > 0 and not alerts_df.empty:
+    report_lines.append("\n[1] EXECUTIVE THREAT SUMMARY:")
+    top_threat = alerts_df["threat_type"].mode().iloc[0] if "threat_type" in alerts_df.columns else "N/A"
+    top_attacker = alerts_df["source_ip"].mode().iloc[0] if "source_ip" in alerts_df.columns else "N/A"
+    avg_risk = int(alerts_df["risk_score"].mean()) if "risk_score" in alerts_df.columns else 0
+    report_lines.append(f"  • Primary Threat Category : {top_threat.upper()}")
+    report_lines.append(f"  • Top Offending Source IP : {top_attacker}")
+    report_lines.append(f"  • Mean Risk Index         : {avg_risk}/100")
+    
+    report_lines.append("\n[2] INCIDENT BREAKDOWN & FINDINGS:")
+    for idx, r in alerts_df.head(10).iterrows():
+        aid = r.get("alert_id", f"ALT-{idx+1:03d}")
+        sev = r.get("severity", "MEDIUM")
+        tt = r.get("threat_type", "Unknown")
+        sip = r.get("source_ip", "Unknown")
+        score = r.get("risk_score", 0)
+        reason = r.get("reason", "Rule threshold exceeded.")
+        report_lines.append(f"  [{aid}] [{sev}] {tt.upper()} from {sip} (Risk: {score}) -> {reason}")
+
+    report_lines.append("\n[3] RECOMMENDED REMEDIATION PLAYBOOK:")
+    unique_threats = alerts_df["threat_type"].unique() if "threat_type" in alerts_df.columns else []
+    for ut in unique_threats:
+        action = "Escalate to SOC analyst for inspection."
+        if "brute_force" in str(ut).lower():
+            action = "Immediately block offending source IP at perimeter firewall. Enforce MFA & account lockout policy."
+        elif "port_scan" in str(ut).lower():
+            action = "Isolate scanning entity. Review open ingress ports and update IDS drop rules."
+        elif "abnormal_traffic" in str(ut).lower():
+            action = "Rate-limit connection. Investigate potential data exfiltration and inspect network flow payloads."
+        elif "ml_anomaly" in str(ut).lower():
+            action = "Correlate host telemetry with process logs to verify outlier behavior."
+        report_lines.append(f"  • {str(ut).upper()}: {action}")
 else:
-    rng2 = np.random.default_rng(1)
-    hours = pd.date_range(end=datetime.now(), periods=24, freq="h")
-    rows = []
-    for h in hours:
-        for sev in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
-            rows.append({"hour": h, "severity": sev, "count": rng2.integers(0, 10)})
-    hourly = pd.DataFrame(rows)
+    report_lines.append("\n[1] EXECUTIVE THREAT SUMMARY:")
+    report_lines.append("  • STATUS: CLEAN / LOW RISK BASELINE")
+    report_lines.append("  • No malicious brute-force, port-scans, or abnormal traffic spikes detected.")
+    report_lines.append("  • Telemetry adheres to normal operational profile.")
 
-sev_colors = {"CRITICAL": "#ef4444", "HIGH": "#f97316", "MEDIUM": "#3b82f6", "LOW": "#22c55e"}
-fig_trend = go.Figure()
-for sev, color in sev_colors.items():
-    sub = hourly[hourly["severity"] == sev]
-    if not sub.empty:
-        fig_trend.add_trace(go.Scatter(
-            x=sub["hour"], y=sub["count"], name=sev,
-            mode="lines+markers", line=dict(color=color, width=2),
-            marker=dict(size=5), fill="tozeroy",
-            fillcolor=color.replace(")", ",0.07)").replace("rgb", "rgba") if "rgb" in color else color + "12",
-        ))
+report_lines.append("\n" + "=" * 80)
+report_lines.append("END OF REPORT — Generated automatically by CyberShield SOC Platform")
 
-fig_trend.update_layout(
-    paper_bgcolor="#111827", plot_bgcolor="#111827",
-    font=dict(color="#e2e8f0"), height=260,
-    margin=dict(l=40, r=20, t=20, b=40),
-    legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
-                bgcolor="rgba(0,0,0,0)"),
-    xaxis=dict(gridcolor="#1f2937", showgrid=True),
-    yaxis=dict(gridcolor="#1f2937", showgrid=True),
-)
-st.plotly_chart(fig_trend, use_container_width=True)
+full_report_str = "\n".join(report_lines)
 
-# ── System status ────────────────────────────────────────────────────────────
-st.markdown('<div class="section-header">🖥️ Detection Engine Status</div>', unsafe_allow_html=True)
+col_rep1, col_rep2 = st.columns([3, 1])
+with col_rep1:
+    st.markdown(f'<div class="report-box">{full_report_str}</div>', unsafe_allow_html=True)
+with col_rep2:
+    st.markdown("#### 📥 Export Report")
+    st.download_button(
+        label="📄 Download Report (TXT)",
+        data=full_report_str,
+        file_name=f"Threat_Report_{active_dataset_badge.replace(' ', '_')}.txt",
+        mime="text/plain",
+        use_container_width=True
+    )
+    if not alerts_df.empty:
+        alerts_csv = alerts_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📊 Download Alerts (CSV)",
+            data=alerts_csv,
+            file_name=f"Alerts_{active_dataset_badge.replace(' ', '_')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+
+# ── Trend & Detection Breakdown ─────────────────────────────────────────────
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown('<div class="section-header">📊 Threat Breakdown & Engine Telemetry</div>', unsafe_allow_html=True)
+
+col_ch1, col_ch2 = st.columns(2)
+with col_ch1:
+    if not alerts_df.empty and "threat_type" in alerts_df.columns:
+        counts = alerts_df["threat_type"].value_counts().reset_index()
+        counts.columns = ["threat_type", "count"]
+        fig_p = px.pie(
+            counts, names="threat_type", values="count", hole=0.45,
+            color_discrete_sequence=["#ef4444", "#f97316", "#3b82f6", "#06b6d4"]
+        )
+        fig_p.update_layout(
+            paper_bgcolor="#111827", plot_bgcolor="#111827",
+            font=dict(color="#e2e8f0"), height=250, margin=dict(t=10, b=10, l=10, r=10)
+        )
+        st.plotly_chart(fig_p, use_container_width=True)
+    else:
+        st.info("No active threats in current dataset.")
+
+with col_ch2:
+    if not alerts_df.empty and "risk_score" in alerts_df.columns:
+        fig_h = px.histogram(
+            alerts_df, x="risk_score", nbins=10,
+            color_discrete_sequence=["#00d4ff"]
+        )
+        fig_h.update_layout(
+            paper_bgcolor="#111827", plot_bgcolor="#111827",
+            font=dict(color="#e2e8f0"), height=250, margin=dict(t=10, b=10, l=10, r=10),
+            xaxis_title="Risk Score (0-100)", yaxis_title="Alert Count"
+        )
+        st.plotly_chart(fig_h, use_container_width=True)
+    else:
+        st.info("No risk score distribution available.")
+
+# ── System Module Status ────────────────────────────────────────────────────
+st.markdown('<div class="section-header">🖥️ Active Pipeline Engines</div>', unsafe_allow_html=True)
 sc1, sc2, sc3, sc4, sc5 = st.columns(5)
 module_status = [
     (sc1, "📜 Log Parser",      _modules_ok.get("log_parser", False)),
@@ -388,26 +488,5 @@ for col, name, ok in module_status:
       <div style="font-size:0.7rem; color:{'#22c55e' if ok else '#f59e0b'}; margin-top:2px;">{status_txt}</div>
     </div>""", unsafe_allow_html=True)
 
-# ── Recent critical alerts ────────────────────────────────────────────────────
-st.markdown("<br>", unsafe_allow_html=True)
-st.markdown('<div class="section-header">🚨 Recent Critical Alerts</div>', unsafe_allow_html=True)
-
-crit = alerts_df[alerts_df["severity"] == "CRITICAL"].head(5) if "severity" in alerts_df.columns else alerts_df.head(5)
-if not crit.empty:
-    for _, row in crit.iterrows():
-        ts = str(row.get("timestamp", ""))[:19]
-        sip = row.get("source_ip", "N/A")
-        tt = row.get("threat_type", "Unknown")
-        rs = row.get("risk_score", "?")
-        st.markdown(f"""
-        <div class="alert-critical">
-          🔴 <strong>[CRITICAL]</strong> &nbsp;
-          <strong>{tt}</strong> from <code>{sip}</code> &nbsp;|&nbsp;
-          Risk Score: <strong style="color:#ef4444;">{rs}</strong> &nbsp;|&nbsp;
-          <span style="color:#6b7280; font-size:0.85rem;">{ts}</span>
-        </div>""", unsafe_allow_html=True)
-else:
-    st.success("✅ No critical alerts at this time.")
-
 st.markdown("<br>")
-st.caption("CyberShield v1.0 · Security Operations Center · Data refreshes every 5 minutes")
+st.caption("CyberShield v1.0 · Cloud Cyber Threat Detection & Analysis Engine")

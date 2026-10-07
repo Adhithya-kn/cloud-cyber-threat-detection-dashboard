@@ -55,33 +55,19 @@ st.markdown("Detailed breakdown of attack surfaces, threat distributions, and an
 # ---------------------------------------------------------------------------
 # Data Loading
 # ---------------------------------------------------------------------------
-@st.cache_data(ttl=60)
 def get_analytics_data():
-    alerts_df = load_alerts("data/alerts.csv")
-    if alerts_df.empty:
-        # Fallback synthetic alerts
-        rng = np.random.default_rng(42)
-        base = datetime.now() - timedelta(hours=24)
-        n = 50
-        threat_types = rng.choice(["brute_force", "port_scan", "abnormal_traffic", "ml_anomaly"], n, p=[0.35, 0.25, 0.25, 0.15])
-        severities = rng.choice(["CRITICAL", "HIGH", "MEDIUM", "LOW"], n, p=[0.15, 0.40, 0.35, 0.10])
-        alerts_df = pd.DataFrame({
-            "alert_id": [f"ALT-20261007-{i:03d}" for i in range(1, n+1)],
-            "threat_type": threat_types,
-            "source_ip": rng.choice(["91.92.251.103", "185.220.101.35", "192.168.2.77", "192.168.4.201", "45.33.32.156"], n),
-            "target_ip": rng.choice(["192.168.1.10", "192.168.4.7", "10.0.0.1"], n),
-            "severity": severities,
-            "risk_score": rng.integers(25, 95, n),
-            "timestamp": [base + timedelta(minutes=int(m)) for m in np.sort(rng.integers(0, 1440, n))],
-            "status": rng.choice(["NEW", "REVIEWING", "RESOLVED"], n),
-            "reason": ["Automated rule detection trigger"] * n,
-            "destination_port": rng.choice([22, 80, 443, 3389, 21, 8080], n)
-        })
+    if "alerts_df" in st.session_state and not st.session_state["alerts_df"].empty:
+        alerts_df = st.session_state["alerts_df"].copy()
+    else:
+        alerts_df = load_alerts("data/alerts.csv")
 
-    logs_df = pd.DataFrame()
-    if os.path.exists("data/demo_security_logs.csv"):
+    if "logs_df" in st.session_state and not st.session_state["logs_df"].empty:
+        logs_df = st.session_state["logs_df"].copy()
+    elif os.path.exists("data/demo_security_logs.csv"):
         logs_df = load_data("data/demo_security_logs.csv")
         logs_df = normalize_events(logs_df)
+    else:
+        logs_df = pd.DataFrame()
 
     return alerts_df, logs_df
 
