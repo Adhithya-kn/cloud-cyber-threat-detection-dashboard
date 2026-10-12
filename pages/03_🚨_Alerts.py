@@ -193,6 +193,11 @@ with ba1:
             idx = st.session_state["alerts_df"].index[
                 st.session_state["alerts_df"]["alert_id"].isin(filt["alert_id"])]
             st.session_state["alerts_df"].loc[idx, "status"] = "RESOLVED"
+            try:
+                from utils.alert_manager import save_alerts
+                save_alerts(st.session_state["alerts_df"], "data/alerts.csv")
+            except Exception:
+                pass
         st.success(f"Marked {len(filt)} alerts as Resolved.")
         st.rerun()
 with ba2:
@@ -315,6 +320,11 @@ if alert_ids:
             if "alerts_df" in st.session_state:
                 mask = st.session_state["alerts_df"]["alert_id"] == sel_id
                 st.session_state["alerts_df"].loc[mask, "status"] = new_status
+                try:
+                    from utils.alert_manager import save_alerts
+                    save_alerts(st.session_state["alerts_df"], "data/alerts.csv")
+                except Exception:
+                    pass
             st.success(f"Alert {sel_id} status updated to **{new_status}**")
             st.rerun()
 else:

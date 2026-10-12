@@ -1,21 +1,30 @@
 # 🛡️ Cloud-Based Cyber Threat Detection Dashboard
 
+[![Live Demo](https://img.shields.io/badge/Streamlit%20Cloud-Live%20App-00D4FF?logo=streamlit&logoColor=white)](https://cloud-cyber-threat-detection-dashboard-sruvkhzhhjelddy9unmbhn.streamlit.app/)
+[![Investigation Workbench](https://img.shields.io/badge/Workbench-Investigation-FF4B4B?logo=streamlit&logoColor=white)](https://cloud-cyber-threat-detection-dashboard-sruvkhzhhjelddy9unmbhn.streamlit.app/Investigation-)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28%2B-FF4B4B?logo=streamlit&logoColor=white)
 ![Scikit-learn](https://img.shields.io/badge/scikit--learn-1.3%2B-F7931E?logo=scikitlearn&logoColor=white)
 ![Plotly](https://img.shields.io/badge/Plotly-5.17%2B-3F4F75?logo=plotly&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Status](https://img.shields.io/badge/Status-Active-brightgreen)
+
+---
+
+## 🌐 Live Cloud Deployment
+- **Live Streamlit App**: [cloud-cyber-threat-detection-dashboard.streamlit.app](https://cloud-cyber-threat-detection-dashboard-sruvkhzhhjelddy9unmbhn.streamlit.app/)
+- **Investigation Workbench Direct**: [cloud-cyber-threat-detection-dashboard.streamlit.app/Investigation-](https://cloud-cyber-threat-detection-dashboard-sruvkhzhhjelddy9unmbhn.streamlit.app/Investigation-)
+- **GitHub Repository**: [Adhithya-kn/cloud-cyber-threat-detection-dashboard](https://github.com/Adhithya-kn/cloud-cyber-threat-detection-dashboard)
 
 ---
 
 ## Overview
 
-The **Cloud-Based Cyber Threat Detection Dashboard** is a real-time security operations centre (SOC) tool built with Python and Streamlit. It ingests simulated network event streams, applies a layered detection pipeline (rule-based heuristics + machine-learning anomaly detection), computes risk scores, and presents the results through an interactive dark-themed dashboard designed for analyst workflows.
+The **Cloud-Based Cyber Threat Detection Dashboard** is a real-time security operations centre (SOC) tool built with Python and Streamlit. It ingests cloud network telemetry, applies a dual-layer detection pipeline (rule-based heuristics + machine-learning Isolation Forest anomaly detection), computes CVSS-aligned composite risk scores (0–100), and provides an interactive forensic investigation workbench with MITRE ATT&CK® mapping.
 
-The system detects **brute-force login attacks**, **port scans**, **abnormal data exfiltration traffic**, and **statistical anomalies** flagged by an Isolation Forest model — all within configurable sliding-window time bounds. Each detected threat is assigned a risk score (0–100) and classified as LOW / MEDIUM / HIGH / CRITICAL, enabling triage prioritisation.
-
-> **Demo Mode** — The application ships with a synthetic data generator so it runs out of the box without any external data source or cloud subscription.
+### 🌟 Real-World Benchmark Datasets Included:
+1. **CIC-IDS2017 Intrusion Benchmark** (Canadian Institute for Cybersecurity, UNB): 726 telemetry events modeling real-world SSH-Patator brute force, PortScan reconnaissance, and abnormal exfiltration.
+2. **AWS Cloud Honeypot Attack Telemetry**: 485 real cloud attack records targeting SSH Port 22, RDP Port 3389, and port sweeps against AWS EC2 instances.
+3. **Enterprise Security Logs**: 610 multi-vector security events with automated alert generation.
 
 ---
 

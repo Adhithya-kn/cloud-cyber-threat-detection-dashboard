@@ -413,9 +413,9 @@ def build_presentation():
     p.space_after = Pt(10)
 
     f_pts = [
-        "Dataset 1 (Normal Baseline): 0 false positives generated across 500 baseline logs.",
-        "Dataset 2 (Brute Force): Attacker IP 185.220.101.35 flagged within 5 rolling minutes with 100% precision.",
-        "Dataset 3 (Multi-Vector): Simultaneously triaged port scans, brute force, and 195 MB exfiltration spikes.",
+        "🌟 CIC-IDS2017 Intrusion Benchmark: 726 telemetry records evaluated (SSH brute force, PortScan, and exfiltration detected with 100% precision).",
+        "☁️ AWS Cloud Honeypot Telemetry: 485 real cloud attack records triaged against port 22/3389 scans and brute force.",
+        "Deterministic Rules + ML: Isolation Forest flags anomalies without fixed signatures, CVSS risk index (0-100) scores threat severity.",
         "Automated Test Suite: 17 unit tests verifying log parsing, heuristic rules, ML inference, and cloud endpoints.",
     ]
     for pt in f_pts:
@@ -439,18 +439,18 @@ def build_presentation():
     tf_d = card_d.text_frame
     tf_d.word_wrap = True
     p = tf_d.paragraphs[0]
-    p.text = "🌐 Live System Deployment"
+    p.text = "🌐 Live System Deployment & Links"
     p.font.size = Pt(18)
     p.font.bold = True
     p.font.color.rgb = GREEN
     p.space_after = Pt(14)
 
     demo_pts = [
+        "Live Web App: https://cloud-cyber-threat-detection-dashboard-sruvkhzhhjelddy9unmbhn.streamlit.app/",
+        "Investigation Workbench: https://cloud-cyber-threat-detection-dashboard-sruvkhzhhjelddy9unmbhn.streamlit.app/Investigation-",
         "GitHub Repository: https://github.com/Adhithya-kn/cloud-cyber-threat-detection-dashboard",
-        "Streamlit Cloud URL: Deployed live via Streamlit Community Cloud (connected to GitHub main branch).",
-        "Public Cloud Tunnel: Active HTTPS edge endpoint via Cloudflare Quick Tunnel.",
-        "Interactive Scenarios: Ships with pre-packaged attack datasets ready for live 1-click evaluation.",
-        "Zero-Config Demo Mode: Fully self-contained with synthetic generator; no paid external cloud licenses required.",
+        "Benchmark Datasets Included: UNB CIC-IDS2017 intrusion benchmark & AWS honeypot telemetry.",
+        "Zero-Config Self-Initialization: All sub-pages auto-load benchmark telemetry with zero manual setup.",
     ]
     for pt in demo_pts:
         p = tf_d.add_paragraph()
