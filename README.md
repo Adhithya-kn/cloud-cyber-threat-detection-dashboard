@@ -63,25 +63,22 @@ The system detects **brute-force login attacks**, **port scans**, **abnormal dat
 
 ## Features
 
-### 📊 Six Dashboard Pages
+### 📊 Five Dashboard Pages
 
 | Page | Description |
 |------|-------------|
-| **① Overview** | KPI cards (total events, active alerts, critical count, detection rate), automated threat intelligence report, severity distribution, active multi-agent status |
-| **② Log Monitoring** | Real-time event feed, protocol breakdown, sliding-window velocity indicators |
-| **③ Alerts** | Full alert table with filter/sort, MITRE ATT&CK tags, CSV export, lifecycle state updates |
+| **① Overview** | KPI cards (total events, active alerts, critical count, detection rate), automated threat report, severity donut, active engines |
+| **② Log Monitoring** | Real-time event feed, protocol breakdown, sliding-window traffic indicators |
+| **③ Alerts** | Full alert table with filter/sort, severity mapping, CSV export, lifecycle state updates |
 | **④ Analytics** | Isolation Forest anomaly scatter, feature importance, contamination tuning, attack vector correlation |
 | **⑤ Investigation** | Offender forensic drilldown, source IP timeline, destination port matrix |
-| **⑥ 🤖 Multi-Agent SOC** | Real-time 5-Agent fleet command center, step-by-step annotated trace audit trail, MITRE ATT&CK matrix, autonomous cloud remediation playbooks |
 
-### 🤖 Multi-Agent Autonomous SOC Fleet
+### 🔍 Detection Engine
 
-- **Agent-Alpha (Ingestion Sentinel)**: Validates canonical schema, sanitizes inputs, extracts 5 velocity features.
-- **Agent-Beta (Heuristic Hunter)**: Evaluates brute force, port scans, abnormal egress, and critical port targets.
-- **Agent-Gamma (Anomaly Oracle)**: Isolation Forest unsupervised ML outlier inference over high-dimensional feature spaces.
-- **Agent-Delta (Correlation & MITRE Correlator)**: Maps threats to MITRE ATT&CK (T1110, T1046, T1048, T1190), fuses evidence, scores risk (0-100).
-- **Agent-Epsilon (Autonomous Responder)**: Formulates perimeter containment playbooks with executable AWS WAF, iptables, and IAM commands.
-- **Step-by-Step Annotated Trace**: Every decision is auditable with sequential step numbers, timestamps, confidence %, and evidence metrics.
+- **Rule-Based Heuristics** — configurable sliding-window counters for brute-force (5 failures / 5 min), port scans (15 ports / 60 s), and traffic spikes (10 MB / 60 s)
+- **ML Anomaly Detection** — Isolation Forest trained on four network-behaviour features; contamination rate tunable from the dashboard
+- **Risk Scoring** — weighted base scores per threat category, boosted for hits on critical ports (SSH, RDP, SMB), mapped to four severity bands (LOW, MEDIUM, HIGH, CRITICAL)
+- **Alert Deduplication** — suppress repeated alerts from the same source within a 300s window to reduce analyst fatigue
 
 
 ---
