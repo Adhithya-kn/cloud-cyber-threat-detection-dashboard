@@ -1,0 +1,40 @@
+app = "cybershield-soc-dashboard"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8501"
+  APP_MODE = "dashboard"
+  ENV = "production"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8501
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 250
+    soft_limit = 200
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+
+  [[services.http_checks]]
+    interval = "20s"
+    timeout = "3s"
+    grace_period = "10s"
+    method = "get"
+    path = "/_stcore/health"

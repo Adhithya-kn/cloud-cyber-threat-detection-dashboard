@@ -1,25 +1,25 @@
 alert_id,timestamp,threat_type,source_ip,target_ip,source_port,destination_port,protocol,risk_score,severity,reason,score_reason,evidence_count,confidence,status,suggested_action
-ALT-20261007-001,2026-10-07T11:30:30.963810+00:00,brute_force,91.92.251.103,,,,UNKNOWN,90,CRITICAL,26 failed login attempts from 91.92.251.103 within a 5-minute window (threshold: 5).,"Base score for 'brute_force': +65
+ALT-20261012-001,2026-10-12T17:26:24.630471+00:00,brute_force,91.92.251.103,192.168.4.7,,,UNKNOWN,90,CRITICAL,26 failed login attempts from 91.92.251.103 within a 5-minute window (threshold: 5).,"Base score for 'brute_force': +65
 High confidence (100% > 80 %): +15
 High evidence count (26 > 20): +10
 Final (clamped) score: 90",26,1.0,NEW,Block source IP and enforce MFA. Review account lockout policy.
-ALT-20261007-002,2026-10-07T11:30:30.964209+00:00,abnormal_traffic,192.168.2.77,,,,UNKNOWN,65,HIGH,192.168.2.77 transferred 195.96 MB within 60s (threshold: 10 MB). 1 flow record(s) in window.,"Base score for 'abnormal_traffic': +50
+ALT-20261012-002,2026-10-12T17:26:24.631241+00:00,abnormal_traffic,192.168.2.77,192.168.2.77,,,UNKNOWN,65,HIGH,192.168.2.77 transferred 195.96 MB within 60s (threshold: 10 MB). 1 flow record(s) in window.,"Base score for 'abnormal_traffic': +50
 High confidence (100% > 80 %): +15
 Final (clamped) score: 65",1,1.0,NEW,Rate-limit source IP. Investigate data exfiltration possibility.
-ALT-20261007-003,2026-10-07T11:30:30.967110+00:00,port_scan,91.92.251.103,,,,UNKNOWN,65,HIGH,91.92.251.103 contacted 28 unique destination ports within 60s (threshold: 15).,"Base score for 'port_scan': +55
+ALT-20261012-003,2026-10-12T17:26:24.636758+00:00,port_scan,91.92.251.103,192.168.4.7,,,UNKNOWN,65,HIGH,91.92.251.103 contacted 28 unique destination ports within 60s (threshold: 15).,"Base score for 'port_scan': +55
 High evidence count (28 > 20): +10
 Final (clamped) score: 65",28,0.4667,NEW,Isolate source IP. Check firewall rules for open ports.
-ALT-20261007-004,2026-10-07T11:30:30.968318+00:00,abnormal_traffic,192.168.3.99,,,,UNKNOWN,65,HIGH,192.168.3.99 transferred 75.49 MB within 60s (threshold: 10 MB). 4 flow record(s) in window.,"Base score for 'abnormal_traffic': +50
+ALT-20261012-004,2026-10-12T17:26:24.639150+00:00,abnormal_traffic,192.168.3.99,23.94.54.22,,,UNKNOWN,65,HIGH,192.168.3.99 transferred 75.49 MB within 60s (threshold: 10 MB). 4 flow record(s) in window.,"Base score for 'abnormal_traffic': +50
 High confidence (100% > 80 %): +15
 Final (clamped) score: 65",4,1.0,NEW,Rate-limit source IP. Investigate data exfiltration possibility.
-ALT-20261007-005,2026-10-07T11:30:30.972511+00:00,abnormal_traffic,192.168.4.201,,,,UNKNOWN,65,HIGH,192.168.4.201 transferred 148.15 MB within 60s (threshold: 10 MB). 1 flow record(s) in window.,"Base score for 'abnormal_traffic': +50
+ALT-20261012-005,2026-10-12T17:26:24.648711+00:00,abnormal_traffic,192.168.4.201,192.168.4.201,,,UNKNOWN,65,HIGH,192.168.4.201 transferred 148.15 MB within 60s (threshold: 10 MB). 1 flow record(s) in window.,"Base score for 'abnormal_traffic': +50
 High confidence (100% > 80 %): +15
 Final (clamped) score: 65",1,1.0,NEW,Rate-limit source IP. Investigate data exfiltration possibility.
-ALT-20261007-006,2026-10-07T11:30:30.976210+00:00,brute_force,185.220.101.35,,,,UNKNOWN,65,HIGH,6 failed login attempts from 185.220.101.35 within a 5-minute window (threshold: 5).,"Base score for 'brute_force': +65
+ALT-20261012-006,2026-10-12T17:26:24.652227+00:00,brute_force,185.220.101.35,192.168.3.19,,,UNKNOWN,65,HIGH,6 failed login attempts from 185.220.101.35 within a 5-minute window (threshold: 5).,"Base score for 'brute_force': +65
 Final (clamped) score: 65",6,0.4,NEW,Block source IP and enforce MFA. Review account lockout policy.
-ALT-20261007-007,2026-10-07T11:30:30.983199+00:00,ml_anomaly,192.168.2.77,,,,UNKNOWN,45,MEDIUM,"ML Isolation Forest flagged row as anomalous (score=-0.0560). Features: [failed_login_count=1.00, unique_ports_per_ip=1.00, request_rate=1.00, bytes_per_source=364807004.00].","Base score for 'ml_anomaly': +45
+ALT-20261012-007,2026-10-12T17:26:24.662690+00:00,ml_anomaly,192.168.2.77,192.168.4.201,,,UNKNOWN,45,MEDIUM,"ML Isolation Forest flagged row as anomalous (score=-0.0560). Features: [failed_login_count=1.00, unique_ports_per_ip=1.00, request_rate=1.00, bytes_per_source=364807004.00].","Base score for 'ml_anomaly': +45
 Final (clamped) score: 45",1,0.556,NEW,Investigate manually. Review related log events for context.
-ALT-20261007-008,2026-10-07T11:30:30.985039+00:00,ml_anomaly,91.92.251.103,,,,UNKNOWN,45,MEDIUM,"ML Isolation Forest flagged row as anomalous (score=-0.0146). Features: [failed_login_count=2.00, unique_ports_per_ip=2.00, request_rate=2.00, bytes_per_source=172.00].","Base score for 'ml_anomaly': +45
+ALT-20261012-008,2026-10-12T17:26:24.666473+00:00,ml_anomaly,91.92.251.103,192.168.4.7,,,UNKNOWN,45,MEDIUM,"ML Isolation Forest flagged row as anomalous (score=-0.0146). Features: [failed_login_count=2.00, unique_ports_per_ip=2.00, request_rate=2.00, bytes_per_source=172.00].","Base score for 'ml_anomaly': +45
 Final (clamped) score: 45",1,0.5146,NEW,Investigate manually. Review related log events for context.
-ALT-20261007-009,2026-10-07T11:30:30.987640+00:00,ml_anomaly,192.168.5.14,,,,UNKNOWN,45,MEDIUM,"ML Isolation Forest flagged row as anomalous (score=-0.0034). Features: [failed_login_count=1.00, unique_ports_per_ip=2.00, request_rate=2.00, bytes_per_source=21592.00].","Base score for 'ml_anomaly': +45
+ALT-20261012-009,2026-10-12T17:26:24.670946+00:00,ml_anomaly,192.168.5.14,192.168.1.33,,,UNKNOWN,45,MEDIUM,"ML Isolation Forest flagged row as anomalous (score=-0.0034). Features: [failed_login_count=1.00, unique_ports_per_ip=2.00, request_rate=2.00, bytes_per_source=21592.00].","Base score for 'ml_anomaly': +45
 Final (clamped) score: 45",1,0.5034,NEW,Investigate manually. Review related log events for context.

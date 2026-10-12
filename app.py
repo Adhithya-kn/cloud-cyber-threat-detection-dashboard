@@ -142,13 +142,33 @@ try:
 except Exception:
     _modules_ok["alert_manager"] = False
 
+try:
+    from orchestration import get_orchestrator, OrchestrationSession
+    _modules_ok["multi_agent_soc"] = True
+except Exception:
+    _modules_ok["multi_agent_soc"] = False
+
+
 
 # ── Full Processing Function for Any Uploaded or Selected Data ───────────────
 def process_dataframe(df_input: pd.DataFrame, source_name: str = "Uploaded Dataset"):
     """
     Runs the complete end-to-end detection, ML anomaly, risk scoring,
     and alert creation pipeline on any provided DataFrame.
+    Leverages the Multi-Agent SOC Orchestrator with full step annotations.
     """
+    if _modules_ok.get("multi_agent_soc", False):
+        try:
+            orch = get_orchestrator()
+            session = orch.run_pipeline(df_input, dataset_name=source_name, persist_alerts=True)
+            st.session_state["orchestration_session"] = session
+            st.session_state["logs_df"] = session.enriched_df
+            st.session_state["alerts_df"] = session.alerts_df
+            st.session_state["active_dataset_name"] = source_name
+            return session.enriched_df, session.alerts_df
+        except Exception as e:
+            st.warning(f"Multi-Agent Orchestrator note: {e}. Falling back to standard pipeline.")
+
     if "normalize_events" in globals():
         df_norm = normalize_events(df_input)
     else:
@@ -240,7 +260,21 @@ with st.sidebar:
     st.divider()
 
     st.markdown("**🗂 Navigation**")
-    st.info("Use the pages above to explore:\n- 📊 Overview\n- 📋 Log Monitoring\n- 🚨 Alerts\n- 📈 Analytics\n- 🔍 Investigation")
+    st.info("Use the pages above to explore:\n- 📊 Overview\n- 📋 Log Monitoring\n- 🚨 Alerts\n- 📈 Analytics\n- 🔍 Investigation\n- 🤖 Multi-Agent SOC")
+    st.divider()
+
+    st.markdown("### ☁️ Cloud Architecture Status")
+    cloud_port = os.environ.get("PORT", "8501")
+    cloud_env = os.environ.get("ENV", "production")
+    app_mode = os.environ.get("APP_MODE", "dashboard")
+    st.markdown(f"""
+    <div style='background:#111827; border:1px solid #1e40af; border-radius:8px; padding:10px; font-size:0.8rem;'>
+      <div>🌐 <b>Host:</b> <code>0.0.0.0:{cloud_port}</code></div>
+      <div>⚡ <b>Environment:</b> <span style='color:#34d399;'>{cloud_env.upper()}</span></div>
+      <div>🚀 <b>Mode:</b> <code>{app_mode}</code></div>
+      <div>🤖 <b>Fleet:</b> <span style='color:#00d4ff;'>5 Multi-Agents Active</span></div>
+    </div>
+    """, unsafe_allow_html=True)
     st.divider()
 
     st.markdown("### 📥 Dataset Selection & Upload")
@@ -316,7 +350,11 @@ st.markdown("""
 
 active_dataset_badge = st.session_state.get("active_dataset_name", "None")
 st.markdown(
-    f"<div style='text-align:center; margin-bottom:15px;'><span style='background:#1e3a5f; color:#93c5fd; padding:4px 12px; border-radius:20px; font-size:0.85rem; font-weight:600;'>Active Dataset: {active_dataset_badge}</span></div>",
+    f"""<div style='text-align:center; margin-bottom:12px;'>
+      <span style='background:#1e3a5f; color:#93c5fd; padding:4px 14px; border-radius:20px; font-size:0.85rem; font-weight:600; margin-right:8px;'>Active Dataset: {active_dataset_badge}</span>
+      <span style='background:#064e3b; color:#34d399; padding:4px 14px; border-radius:20px; font-size:0.85rem; font-weight:600;'>Cloud Mode: Dynamic Port Binding (0.0.0.0)</span>
+      <span style='background:#312e81; color:#c7d2fe; padding:4px 14px; border-radius:20px; font-size:0.85rem; font-weight:600; margin-left:8px;'>🤖 5-Agent SOC Fleet Online</span>
+    </div>""",
     unsafe_allow_html=True
 )
 st.markdown("<hr style='border:1px solid #1e40af; margin:0 0 20px 0;'>", unsafe_allow_html=True)
@@ -468,25 +506,27 @@ with col_ch2:
     else:
         st.info("No risk score distribution available.")
 
-# ── System Module Status ────────────────────────────────────────────────────
-st.markdown('<div class="section-header">🖥️ Active Pipeline Engines</div>', unsafe_allow_html=True)
+# ── System Module & Multi-Agent Fleet Status ────────────────────────────────
+st.markdown('<div class="section-header">🤖 Autonomous Multi-Agent SOC Fleet & Pipeline Engines</div>', unsafe_allow_html=True)
 sc1, sc2, sc3, sc4, sc5 = st.columns(5)
-module_status = [
-    (sc1, "📜 Log Parser",      _modules_ok.get("log_parser", False)),
-    (sc2, "⚙️ Rules Engine",    _modules_ok.get("rules_engine", False)),
-    (sc3, "🤖 ML Engine",       _modules_ok.get("ml_engine", False)),
-    (sc4, "🎯 Risk Scorer",     _modules_ok.get("risk_score", False)),
-    (sc5, "🔔 Alert Manager",   _modules_ok.get("alert_manager", False)),
+agent_fleet_status = [
+    (sc1, "🛰️ Ingestion Sentinel",  "Alpha: Schema & Features",   _modules_ok.get("log_parser", False)),
+    (sc2, "🎯 Heuristic Hunter",    "Beta: Rule Attacks",          _modules_ok.get("rules_engine", False)),
+    (sc3, "🧠 Anomaly Oracle",      "Gamma: Isolation Forest",     _modules_ok.get("ml_engine", False)),
+    (sc4, "⚖️ MITRE Correlator",    "Delta: Risk Fusion",          _modules_ok.get("risk_score", False)),
+    (sc5, "🛡️ Auto Responder",      "Epsilon: Containment",        _modules_ok.get("multi_agent_soc", False)),
 ]
-for col, name, ok in module_status:
+for col, name, subtitle, ok in agent_fleet_status:
     icon = "✅" if ok else "⚠️"
-    status_txt = "ONLINE" if ok else "FALLBACK"
+    status_txt = "ACTIVE" if ok else "FALLBACK"
     col.markdown(f"""
     <div class="kpi-card" style="padding:14px;">
-      <div style="font-size:1.4rem;">{icon}</div>
-      <div style="font-size:0.8rem; font-weight:600; color:#e2e8f0; margin-top:4px;">{name}</div>
-      <div style="font-size:0.7rem; color:{'#22c55e' if ok else '#f59e0b'}; margin-top:2px;">{status_txt}</div>
+      <div style="font-size:1.3rem;">{icon}</div>
+      <div style="font-size:0.82rem; font-weight:700; color:#e2e8f0; margin-top:4px;">{name}</div>
+      <div style="font-size:0.68rem; color:#94a3b8; margin-top:1px;">{subtitle}</div>
+      <div style="font-size:0.7rem; color:{'#22c55e' if ok else '#f59e0b'}; margin-top:3px; font-weight:600;">{status_txt}</div>
     </div>""", unsafe_allow_html=True)
 
 st.markdown("<br>")
-st.caption("CyberShield v1.0 · Cloud Cyber Threat Detection & Analysis Engine")
+st.caption("CyberShield v2.0 · Cloud Cyber Threat Detection & Multi-Agent SOC Platform · Cloud Application Development")
+

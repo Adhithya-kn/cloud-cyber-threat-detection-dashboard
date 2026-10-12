@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # ── Microservice 1: CyberShield SOC Web Dashboard ──────────────────────────
+  cybershield-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cybershield-dashboard
+    restart: unless-stopped
+    environment:
+      - PORT=8501
+      - APP_MODE=dashboard
+      - ENV=production
+      - API_URL=http://cybershield-api:8000
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    networks:
+      - cybershield-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Microservice 2: Cloud Telemetry Ingestion API & Agent Gateway ──────────
+  cybershield-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cybershield-api
+    restart: unless-stopped
+    environment:
+      - PORT=8000
+      - APP_MODE=api
+      - ENV=production
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    networks:
+      - cybershield-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  cybershield-net:
+    driver: bridge

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cybershield-service
+  namespace: cybershield-soc
+  labels:
+    app: cybershield
+spec:
+  type: LoadBalancer
+  ports:
+    - name: dashboard
+      port: 80
+      targetPort: 8501
+      protocol: TCP
+    - name: api
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+  selector:
+    app: cybershield

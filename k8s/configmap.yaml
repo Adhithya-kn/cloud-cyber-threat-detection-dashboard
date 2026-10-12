@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cybershield-config
+  namespace: cybershield-soc
+data:
+  ENV: "production"
+  PORT: "8501"
+  API_PORT: "8000"
+  APP_MODE: "dual"
+  AGENT_ORCHESTRATION_ENABLED: "true"
+  ML_CONTAMINATION_RATE: "0.05"

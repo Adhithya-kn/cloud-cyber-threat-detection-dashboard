@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cybershield-deployment
+  namespace: cybershield-soc
+  labels:
+    app: cybershield
+    tier: frontend-and-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cybershield
+  template:
+    metadata:
+      labels:
+        app: cybershield
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: cybershield-app
+          image: cybershield/dashboard:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: cybershield-config
+          ports:
+            - containerPort: 8501
+              name: http-dashboard
+            - containerPort: 8000
+              name: http-api
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1536Mi"
+          readinessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3

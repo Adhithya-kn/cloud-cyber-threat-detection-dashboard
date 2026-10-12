@@ -63,22 +63,26 @@ The system detects **brute-force login attacks**, **port scans**, **abnormal dat
 
 ## Features
 
-### 📊 Five Dashboard Pages
+### 📊 Six Dashboard Pages
 
 | Page | Description |
 |------|-------------|
-| **① Overview** | KPI cards (total events, active alerts, critical count, detection rate), time-series traffic chart, severity distribution donut, top-attacking IPs table |
-| **② Live Monitor** | Real-time auto-refreshing event feed, rolling threat timeline, per-protocol breakdown |
-| **③ Threat Intelligence** | Geo-IP mapping, attack-type heatmap, port-scan target analysis, IP reputation panel |
-| **④ ML Insights** | Isolation Forest anomaly scatter, feature importance bar chart, model performance metrics, contamination tuning slider |
-| **⑤ Alerts & Reports** | Full alert table with filter/sort, CSV export, deduplication log, PDF report generation stub |
+| **① Overview** | KPI cards (total events, active alerts, critical count, detection rate), automated threat intelligence report, severity distribution, active multi-agent status |
+| **② Log Monitoring** | Real-time event feed, protocol breakdown, sliding-window velocity indicators |
+| **③ Alerts** | Full alert table with filter/sort, MITRE ATT&CK tags, CSV export, lifecycle state updates |
+| **④ Analytics** | Isolation Forest anomaly scatter, feature importance, contamination tuning, attack vector correlation |
+| **⑤ Investigation** | Offender forensic drilldown, source IP timeline, destination port matrix |
+| **⑥ 🤖 Multi-Agent SOC** | Real-time 5-Agent fleet command center, step-by-step annotated trace audit trail, MITRE ATT&CK matrix, autonomous cloud remediation playbooks |
 
-### 🔍 Detection Engine
+### 🤖 Multi-Agent Autonomous SOC Fleet
 
-- **Rule-Based Heuristics** — configurable sliding-window counters for brute-force (5 failures / 5 min), port scans (15 ports / 60 s), and traffic spikes (10 MB / 60 s)
-- **ML Anomaly Detection** — Isolation Forest trained on five network-behaviour features; contamination rate tunable from the dashboard
-- **Risk Scoring** — weighted base scores per threat category, boosted for hits on critical ports (SSH, RDP, SMB, SQL, …), mapped to four severity bands
-- **Alert Deduplication** — suppress repeated alerts from the same source within a configurable time window to reduce analyst fatigue
+- **Agent-Alpha (Ingestion Sentinel)**: Validates canonical schema, sanitizes inputs, extracts 5 velocity features.
+- **Agent-Beta (Heuristic Hunter)**: Evaluates brute force, port scans, abnormal egress, and critical port targets.
+- **Agent-Gamma (Anomaly Oracle)**: Isolation Forest unsupervised ML outlier inference over high-dimensional feature spaces.
+- **Agent-Delta (Correlation & MITRE Correlator)**: Maps threats to MITRE ATT&CK (T1110, T1046, T1048, T1190), fuses evidence, scores risk (0-100).
+- **Agent-Epsilon (Autonomous Responder)**: Formulates perimeter containment playbooks with executable AWS WAF, iptables, and IAM commands.
+- **Step-by-Step Annotated Trace**: Every decision is auditable with sequential step numbers, timestamps, confidence %, and evidence metrics.
+
 
 ---
 
