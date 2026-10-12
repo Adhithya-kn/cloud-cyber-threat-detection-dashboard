@@ -143,95 +143,22 @@ except Exception:
     _modules_ok["alert_manager"] = False
 
 
-# ── Full Processing Function for Any Uploaded or Selected Data ───────────────
+# ── Unified Pipeline Engine ─────────────────────────────────────────────────
+from utils.pipeline import (
+    run_pipeline,
+    ensure_session_data,
+    AVAILABLE_DATASETS,
+    DEFAULT_DATASET_NAME,
+    DEFAULT_DATASET_PATH,
+)
+
 def process_dataframe(df_input: pd.DataFrame, source_name: str = "Uploaded Dataset"):
-    """
-    Runs the complete end-to-end detection, ML anomaly, risk scoring,
-    and alert creation pipeline on any provided DataFrame.
-    """
-
-    if "normalize_events" in globals():
-        df_norm = normalize_events(df_input)
-    else:
-        df_norm = df_input.copy()
-
-    if "extract_features" in globals():
-        df_feat = extract_features(df_norm)
-    else:
-        df_feat = df_norm.copy()
-
-    rule_dets = []
-    if "run_all_rules" in globals():
-        try:
-            rule_dets = run_all_rules(df_feat)
-        except Exception as e:
-            st.warning(f"Rule detection warning: {e}")
-
-    ml_dets = []
-    if "train_model" in globals() and "detect_anomalies" in globals():
-        try:
-            bundle = train_model(df_feat)
-            scored = detect_anomalies(df_feat, bundle)
-            ml_dets = get_anomaly_detections(scored)
-        except Exception as e:
-            st.warning(f"ML engine warning: {e}")
-
-    all_dets = rule_dets + ml_dets
-    enriched = []
-    if "process_all_detections" in globals():
-        try:
-            enriched = process_all_detections(all_dets)
-        except Exception as e:
-            enriched = all_dets
-    else:
-        enriched = all_dets
-
-    # Create alerts DataFrame
-    alert_rows = []
-    alerts_tracker = pd.DataFrame()
-    for det in enriched:
-        if "create_alert" in globals():
-            rec = create_alert(det)
-            alerts_tracker = add_alert(rec, alerts_tracker)
-        else:
-            alert_rows.append(det)
-
-    if not alerts_tracker.empty:
-        alerts_final = alerts_tracker
-    elif alert_rows:
-        alerts_final = pd.DataFrame(alert_rows)
-    else:
-        alerts_final = pd.DataFrame(columns=[
-            "alert_id", "timestamp", "threat_type", "source_ip",
-            "destination_ip", "severity", "risk_score", "status",
-            "reason", "suggested_action"
-        ])
-
-    # Save to session_state so all other pages immediately reflect this dataset
-    st.session_state["logs_df"] = df_feat
-    st.session_state["alerts_df"] = alerts_final
-    st.session_state["active_dataset_name"] = source_name
-
-    # Save alerts to data/alerts.csv for persistence
-    try:
-        if not alerts_final.empty and "save_alerts" in globals():
-            save_alerts(alerts_final, "data/alerts.csv")
-    except Exception:
-        pass
-
-    return df_feat, alerts_final
+    """Runs the complete detection and scoring pipeline."""
+    return run_pipeline(df_input, source_name)
 
 
-# ── Initialize session state if empty ─────────────────────────────────────────
-if "logs_df" not in st.session_state or "alerts_df" not in st.session_state:
-    init_path = "data/demo_security_logs.csv"
-    if os.path.exists(init_path):
-        raw_init = pd.read_csv(init_path)
-        process_dataframe(raw_init, "demo_security_logs.csv")
-    else:
-        st.session_state["logs_df"] = pd.DataFrame()
-        st.session_state["alerts_df"] = pd.DataFrame()
-        st.session_state["active_dataset_name"] = "None"
+# ── Ensure Session State Initialized ─────────────────────────────────────────
+logs_df, alerts_df, active_name = ensure_session_data()
 
 
 # ── Sidebar ─────────────────────────────────────────────────────────────────
@@ -240,8 +167,8 @@ with st.sidebar:
     st.markdown('<div class="sidebar-tagline">Cloud Cyber Threat Detection</div>', unsafe_allow_html=True)
     st.divider()
 
-    st.markdown("**🗂 Navigation**")
-    st.info("Use the pages above to explore:\n- 📊 Overview\n- 📋 Log Monitoring\n- 🚨 Alerts\n- 📈 Analytics\n- 🔍 Investigation\n- 🤖 Multi-Agent SOC")
+    st.markdown("**🗂 SOC Modules**")
+    st.info("Explore the dedicated pages:\n- 📊 Overview\n- 📋 Log Monitoring\n- 🚨 Alerts\n- 📈 Analytics\n- 🔍 Investigation")
     st.divider()
 
     st.markdown("### ☁️ Cloud Architecture Status")
@@ -258,18 +185,16 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     st.divider()
 
-    st.markdown("### 📥 Dataset Selection & Upload")
-    
-    # Pre-packaged demo datasets dropdown
+    st.markdown("### 📥 Benchmark Datasets & Upload")
+
+    dataset_options = list(AVAILABLE_DATASETS.keys()) + ["📂 Upload Custom CSV/JSON"]
+    current_active = st.session_state.get("active_dataset_name", DEFAULT_DATASET_NAME)
+    default_idx = dataset_options.index(current_active) if current_active in dataset_options else 0
+
     dataset_choice = st.selectbox(
-        "Choose Demo Dataset or Upload:",
-        [
-            "📂 Upload Custom CSV/JSON",
-            "1️⃣ Normal Baseline Traffic (dataset_1)",
-            "2️⃣ SSH Brute-Force Incident (dataset_2)",
-            "3️⃣ Multi-Vector Breach (dataset_3)",
-            "🌟 Full 610-Log Demo (demo_security_logs)"
-        ]
+        "Choose Security Telemetry Dataset:",
+        dataset_options,
+        index=default_idx
     )
 
     if dataset_choice == "📂 Upload Custom CSV/JSON":
@@ -289,16 +214,10 @@ with st.sidebar:
                         st.error(f"Error parsing file: {err}")
 
     else:
-        file_map = {
-            "1️⃣ Normal Baseline Traffic (dataset_1)": "data/dataset_1_normal_baseline.csv",
-            "2️⃣ SSH Brute-Force Incident (dataset_2)": "data/dataset_2_bruteforce_attack.csv",
-            "3️⃣ Multi-Vector Breach (dataset_3)": "data/dataset_3_multivector_breach.csv",
-            "🌟 Full 610-Log Demo (demo_security_logs)": "data/demo_security_logs.csv",
-        }
-        selected_file_path = file_map.get(dataset_choice)
+        selected_file_path = AVAILABLE_DATASETS.get(dataset_choice)
         if st.button(f"⚡ Load & Analyze Selected", use_container_width=True, type="primary"):
             with st.spinner("Analyzing selected dataset through SOC pipeline..."):
-                if os.path.exists(selected_file_path):
+                if selected_file_path and os.path.exists(selected_file_path):
                     chosen_df = pd.read_csv(selected_file_path)
                     process_dataframe(chosen_df, dataset_choice)
                     st.success("Analysis complete!")
@@ -307,13 +226,13 @@ with st.sidebar:
                     st.error(f"File not found: {selected_file_path}")
 
     st.divider()
-    active_name = st.session_state.get("active_dataset_name", "Default")
-    st.markdown(f"**Current Active Data:** `{active_name}`")
-    
-    if st.button("🔄 Reset / Re-run Pipeline", use_container_width=True):
+    active_badge = st.session_state.get("active_dataset_name", "Default")
+    st.markdown(f"**Current Active Data:** `{active_badge}`")
+
+    if st.button("🔄 Reset / Reload Baseline", use_container_width=True):
         st.cache_data.clear()
-        if os.path.exists("data/demo_security_logs.csv"):
-            process_dataframe(pd.read_csv("data/demo_security_logs.csv"), "demo_security_logs.csv")
+        if os.path.exists(DEFAULT_DATASET_PATH):
+            process_dataframe(pd.read_csv(DEFAULT_DATASET_PATH), DEFAULT_DATASET_NAME)
         st.rerun()
 
 logs_df = st.session_state.get("logs_df", pd.DataFrame())

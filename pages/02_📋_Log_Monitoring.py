@@ -36,27 +36,28 @@ CHART_LAYOUT = dict(
     font=dict(color="#e2e8f0"), margin=dict(l=40,r=20,t=30,b=40),
 )
 
+from utils.pipeline import (
+    ensure_session_data,
+    run_pipeline,
+    AVAILABLE_DATASETS,
+    DEFAULT_DATASET_NAME,
+    DEFAULT_DATASET_PATH,
+)
+
 def _load_logs():
-    if "logs_df" in st.session_state and not st.session_state["logs_df"].empty:
-        return st.session_state["logs_df"].copy()
-    p = "data/demo_security_logs.csv"
-    if os.path.exists(p):
-        try:
-            return pd.read_csv(p, parse_dates=["timestamp"])
-        except Exception:
-            pass
-    # Fallback minimal df
-    return pd.DataFrame(columns=[
-        "timestamp","source_ip","destination_ip","source_port","destination_port",
-        "protocol","event_type","status","bytes"
-    ])
+    logs, _, _ = ensure_session_data()
+    return logs.copy()
 
 # ── Load data ────────────────────────────────────────────────────────────────
 with st.spinner("Loading log data…"):
     logs = _load_logs()
 
 if logs.empty:
-    st.warning("⚠️ No logs available. Please load or upload a dataset on the Home page.")
+    st.info("⚠️ No logs available. Please select a benchmark dataset.")
+    if st.button("⚡ Load CIC-IDS2017 Intrusion Benchmark", type="primary"):
+        if os.path.exists(DEFAULT_DATASET_PATH):
+            run_pipeline(pd.read_csv(DEFAULT_DATASET_PATH), DEFAULT_DATASET_NAME)
+            st.rerun()
     st.stop()
 
 # Ensure timestamp is datetime
@@ -65,6 +66,23 @@ logs = logs.dropna(subset=["timestamp"]).sort_values("timestamp", ascending=Fals
 
 # ── Sidebar filters ──────────────────────────────────────────────────────────
 with st.sidebar:
+    st.markdown('<div style="font-size:1.4rem;font-weight:800;color:#00d4ff;">🛡️ CyberShield</div>', unsafe_allow_html=True)
+    st.caption("Live Log Stream & Telemetry")
+    st.divider()
+
+    st.markdown("### 📥 Switch Telemetry Dataset")
+    ds_options = list(AVAILABLE_DATASETS.keys())
+    curr_ds = st.session_state.get("active_dataset_name", DEFAULT_DATASET_NAME)
+    curr_idx = ds_options.index(curr_ds) if curr_ds in ds_options else 0
+    sel_ds = st.selectbox("Active Dataset:", ds_options, index=curr_idx, key="logs_dataset_select")
+
+    if sel_ds != curr_ds:
+        fpath = AVAILABLE_DATASETS.get(sel_ds)
+        if fpath and os.path.exists(fpath):
+            run_pipeline(pd.read_csv(fpath), sel_ds)
+            st.rerun()
+
+    st.divider()
     st.markdown("## 🔍 Log Stream Filters")
     st.divider()
 

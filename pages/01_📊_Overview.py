@@ -41,85 +41,46 @@ CHART_LAYOUT = dict(
 SEV_COLORS = {"CRITICAL": "#ef4444", "HIGH": "#f97316", "MEDIUM": "#3b82f6", "LOW": "#22c55e"}
 
 
-# ── Synthetic generators ─────────────────────────────────────────────────────
-@st.cache_data(ttl=300)
-def _gen_logs(n=2000):
-    rng = np.random.default_rng(42)
-    base = datetime.now() - timedelta(hours=24)
-    ts = [base + timedelta(seconds=int(s)) for s in np.sort(rng.integers(0, 86400, n))]
-    attackers = ["45.33.32.156", "23.95.110.42", "198.199.85.30", "104.21.44.78"]
-    src = [f"192.168.{rng.integers(1,10)}.{rng.integers(1,254)}" for _ in range(n)]
-    for i in rng.choice(n, 300, replace=False): src[i] = attackers[rng.integers(0, 4)]
-    et = rng.choice(["Login Attempt","Port Scan","File Access","Data Transfer","Connection","DNS Query"],
-                    n, p=[0.25,0.15,0.20,0.10,0.20,0.10])
-    st2 = rng.choice(["Success","Failure"], n, p=[0.65,0.35])
-    proto = rng.choice(["TCP","UDP","ICMP","HTTP","HTTPS","SSH","FTP"], n,
-                       p=[0.35,0.20,0.05,0.15,0.15,0.07,0.03])
-    return pd.DataFrame({"timestamp":ts,"source_ip":src,
-        "destination_ip":[f"10.0.{rng.integers(0,4)}.{rng.integers(1,50)}" for _ in range(n)],
-        "source_port":rng.integers(1024,65535,n),
-        "destination_port":rng.choice([22,80,443,3306,3389,8080,21,25,53],n),
-        "protocol":proto,"event_type":et,"status":st2,
-        "bytes_transferred":rng.integers(64,150000,n)})
+from utils.pipeline import (
+    ensure_session_data,
+    run_pipeline,
+    AVAILABLE_DATASETS,
+    DEFAULT_DATASET_NAME,
+    DEFAULT_DATASET_PATH,
+)
 
+# ── Sidebar Dataset Switcher ────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown('<div style="font-size:1.4rem;font-weight:800;color:#00d4ff;">🛡️ CyberShield</div>', unsafe_allow_html=True)
+    st.caption("SOC Threat Intelligence Overview")
+    st.divider()
 
-@st.cache_data(ttl=300)
-def _gen_alerts(n=120):
-    rng = np.random.default_rng(7)
-    base = datetime.now() - timedelta(hours=24)
-    ts = [base + timedelta(seconds=int(s)) for s in np.sort(rng.integers(0, 86400, n))]
-    attackers = ["45.33.32.156","23.95.110.42","198.199.85.30","104.21.44.78","91.195.240.117","185.220.101.33"]
-    tt = rng.choice(["Brute Force","Port Scan","Abnormal Traffic","ML Anomaly","Data Exfiltration","Ransomware Indicator"],
-                    n, p=[0.30,0.25,0.15,0.15,0.10,0.05])
-    sev = rng.choice(["CRITICAL","HIGH","MEDIUM","LOW"], n, p=[0.10,0.25,0.40,0.25])
-    reasons = {
-        "Brute Force":"Multiple failed login attempts detected from single source IP.",
-        "Port Scan":"Sequential port probing activity detected.",
-        "Abnormal Traffic":"Unusual byte transfer volume exceeds baseline threshold.",
-        "ML Anomaly":"Isolation Forest model flagged unusual behavioural pattern.",
-        "Data Exfiltration":"Large outbound data transfer to external IP detected.",
-        "Ransomware Indicator":"File encryption pattern detected on internal host.",
-    }
-    suggested = {
-        "Brute Force":"Block source IP. Enable account lockout policy.",
-        "Port Scan":"Firewall block source IP. Review open ports.",
-        "Abnormal Traffic":"Throttle connection. Investigate host for malware.",
-        "ML Anomaly":"Investigate source host. Correlate with other events.",
-        "Data Exfiltration":"Immediately block outbound connection. Isolate host.",
-        "Ransomware Indicator":"ISOLATE HOST IMMEDIATELY. Engage IR team.",
-    }
-    return pd.DataFrame({
-        "alert_id":[f"ALERT-{1000+i}" for i in range(n)],
-        "timestamp":ts,
-        "source_ip":[attackers[rng.integers(0,len(attackers))] for _ in range(n)],
-        "destination_ip":[f"10.0.{rng.integers(0,4)}.{rng.integers(1,50)}" for _ in range(n)],
-        "threat_type":tt,"severity":sev,
-        "risk_score":np.clip(rng.normal(60,25,n),1,100).astype(int),
-        "status":rng.choice(["New","Reviewing","Resolved","False Positive"],n,p=[0.40,0.25,0.25,0.10]),
-        "detection_reason":[reasons[t] for t in tt],
-        "suggested_action":[suggested[t] for t in tt],
-    })
+    st.markdown("### 📥 Switch Telemetry Dataset")
+    ds_options = list(AVAILABLE_DATASETS.keys())
+    curr_ds = st.session_state.get("active_dataset_name", DEFAULT_DATASET_NAME)
+    curr_idx = ds_options.index(curr_ds) if curr_ds in ds_options else 0
+    sel_ds = st.selectbox("Active Dataset:", ds_options, index=curr_idx, key="overview_dataset_select")
 
+    if sel_ds != curr_ds:
+        fpath = AVAILABLE_DATASETS.get(sel_ds)
+        if fpath and os.path.exists(fpath):
+            run_pipeline(pd.read_csv(fpath), sel_ds)
+            st.rerun()
+
+    st.divider()
+    st.markdown(f"**Current Data:** `{st.session_state.get('active_dataset_name', 'Benchmark')}`")
+    st.markdown(f"**Events Ingested:** `{len(st.session_state.get('logs_df', [])):,}`")
+    st.markdown(f"**Alerts Triggered:** `{len(st.session_state.get('alerts_df', [])):,}`")
+    st.divider()
+
+    if st.button("🔄 Reload Default Benchmark", use_container_width=True, key="overview_reset_btn"):
+        if os.path.exists(DEFAULT_DATASET_PATH):
+            run_pipeline(pd.read_csv(DEFAULT_DATASET_PATH), DEFAULT_DATASET_NAME)
+            st.rerun()
 
 def _load():
-    logs = st.session_state.get("logs_df")
-    if logs is None:
-        p = "data/demo_security_logs.csv"
-        if os.path.exists(p):
-            try: logs = pd.read_csv(p, parse_dates=["timestamp"])
-            except: logs = _gen_logs()
-        else: logs = _gen_logs()
-        st.session_state["logs_df"] = logs
-
-    alerts = st.session_state.get("alerts_df")
-    if alerts is None:
-        p = "data/alerts.csv"
-        if os.path.exists(p):
-            try: alerts = pd.read_csv(p, parse_dates=["timestamp"])
-            except: alerts = _gen_alerts()
-        else: alerts = _gen_alerts()
-        st.session_state["alerts_df"] = alerts
-    return logs, alerts
+    logs, alerts, _ = ensure_session_data()
+    return logs.copy(), alerts.copy()
 
 
 # ── Page ─────────────────────────────────────────────────────────────────────

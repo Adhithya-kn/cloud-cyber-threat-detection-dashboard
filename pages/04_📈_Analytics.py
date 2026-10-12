@@ -23,8 +23,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
-from utils.alert_manager import load_alerts
-from utils.log_parser import load_data, normalize_events
+from utils.pipeline import (
+    ensure_session_data,
+    run_pipeline,
+    AVAILABLE_DATASETS,
+    DEFAULT_DATASET_NAME,
+    DEFAULT_DATASET_PATH,
+)
 
 st.set_page_config(
     page_title="Threat Analytics | CyberShield",
@@ -53,25 +58,40 @@ st.title("📈 Threat Analytics & Intelligence")
 st.markdown("Detailed breakdown of attack surfaces, threat distributions, and anomaly signatures.")
 
 # ---------------------------------------------------------------------------
+# Sidebar Dataset Switcher
+# ---------------------------------------------------------------------------
+with st.sidebar:
+    st.markdown('<div style="font-size:1.4rem;font-weight:800;color:#00d4ff;">🛡️ CyberShield</div>', unsafe_allow_html=True)
+    st.caption("Threat Analytics & Intelligence")
+    st.divider()
+
+    st.markdown("### 📥 Switch Telemetry Dataset")
+    ds_options = list(AVAILABLE_DATASETS.keys())
+    curr_ds = st.session_state.get("active_dataset_name", DEFAULT_DATASET_NAME)
+    curr_idx = ds_options.index(curr_ds) if curr_ds in ds_options else 0
+    sel_ds = st.selectbox("Active Dataset:", ds_options, index=curr_idx, key="analytics_dataset_select")
+
+    if sel_ds != curr_ds:
+        fpath = AVAILABLE_DATASETS.get(sel_ds)
+        if fpath and os.path.exists(fpath):
+            run_pipeline(pd.read_csv(fpath), sel_ds)
+            st.rerun()
+
+    st.divider()
+    st.markdown(f"**Current Data:** `{st.session_state.get('active_dataset_name', 'Benchmark')}`")
+    st.markdown(f"**Events Ingested:** `{len(st.session_state.get('logs_df', [])):,}`")
+    st.markdown(f"**Alerts Triggered:** `{len(st.session_state.get('alerts_df', [])):,}`")
+    st.divider()
+
+    if st.button("🔄 Reload Default Benchmark", use_container_width=True, key="analytics_reset_btn"):
+        if os.path.exists(DEFAULT_DATASET_PATH):
+            run_pipeline(pd.read_csv(DEFAULT_DATASET_PATH), DEFAULT_DATASET_NAME)
+            st.rerun()
+
+# ---------------------------------------------------------------------------
 # Data Loading
 # ---------------------------------------------------------------------------
-def get_analytics_data():
-    if "alerts_df" in st.session_state and not st.session_state["alerts_df"].empty:
-        alerts_df = st.session_state["alerts_df"].copy()
-    else:
-        alerts_df = load_alerts("data/alerts.csv")
-
-    if "logs_df" in st.session_state and not st.session_state["logs_df"].empty:
-        logs_df = st.session_state["logs_df"].copy()
-    elif os.path.exists("data/demo_security_logs.csv"):
-        logs_df = load_data("data/demo_security_logs.csv")
-        logs_df = normalize_events(logs_df)
-    else:
-        logs_df = pd.DataFrame()
-
-    return alerts_df, logs_df
-
-alerts_df, logs_df = get_analytics_data()
+logs_df, alerts_df, active_name = ensure_session_data()
 
 # Ensure timestamp is datetime
 if not alerts_df.empty and "timestamp" in alerts_df.columns:

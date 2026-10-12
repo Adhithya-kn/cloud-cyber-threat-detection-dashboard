@@ -46,22 +46,27 @@ CHART_LAYOUT = dict(
 SEV_COLORS = {"CRITICAL":"#ef4444","HIGH":"#f97316","MEDIUM":"#3b82f6","LOW":"#22c55e"}
 SEV_BADGE  = {"CRITICAL":"badge-critical","HIGH":"badge-high","MEDIUM":"badge-medium","LOW":"badge-low"}
 
+from utils.pipeline import (
+    ensure_session_data,
+    run_pipeline,
+    AVAILABLE_DATASETS,
+    DEFAULT_DATASET_NAME,
+    DEFAULT_DATASET_PATH,
+)
+
 def _load_alerts():
-    if "alerts_df" in st.session_state and not st.session_state["alerts_df"].empty:
-        return st.session_state["alerts_df"].copy()
-    p = "data/alerts.csv"
-    if os.path.exists(p):
-        try:
-            return pd.read_csv(p, parse_dates=["timestamp"])
-        except Exception:
-            pass
-    return pd.DataFrame()
+    _, alerts, _ = ensure_session_data()
+    return alerts.copy()
 
 with st.spinner("Loading alerts…"):
     alerts = _load_alerts()
 
 if alerts.empty:
-    st.warning("⚠️ No alerts currently in store. Please upload or analyze a dataset on the Home page.")
+    st.info("ℹ️ No active alerts in the current dataset (normal baseline traffic).")
+    if st.button("⚡ Load CIC-IDS2017 Intrusion Benchmark", type="primary"):
+        if os.path.exists(DEFAULT_DATASET_PATH):
+            run_pipeline(pd.read_csv(DEFAULT_DATASET_PATH), DEFAULT_DATASET_NAME)
+            st.rerun()
     st.stop()
 
 # Normalize columns
@@ -72,6 +77,23 @@ if "destination_ip" not in alerts.columns and "target_ip" in alerts.columns:
 
 # ── Sidebar filters ───────────────────────────────────────────────────────────
 with st.sidebar:
+    st.markdown('<div style="font-size:1.4rem;font-weight:800;color:#00d4ff;">🛡️ CyberShield</div>', unsafe_allow_html=True)
+    st.caption("Alert Management Center")
+    st.divider()
+
+    st.markdown("### 📥 Switch Telemetry Dataset")
+    ds_options = list(AVAILABLE_DATASETS.keys())
+    curr_ds = st.session_state.get("active_dataset_name", DEFAULT_DATASET_NAME)
+    curr_idx = ds_options.index(curr_ds) if curr_ds in ds_options else 0
+    sel_ds = st.selectbox("Active Dataset:", ds_options, index=curr_idx, key="alerts_dataset_select")
+
+    if sel_ds != curr_ds:
+        fpath = AVAILABLE_DATASETS.get(sel_ds)
+        if fpath and os.path.exists(fpath):
+            run_pipeline(pd.read_csv(fpath), sel_ds)
+            st.rerun()
+
+    st.divider()
     st.markdown("## 🚨 Alert Filters")
     st.divider()
 
