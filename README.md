@@ -114,36 +114,35 @@ cloud-cyber-threat-detection-dashboard/
 ├── .streamlit/
 │   └── config.toml          # Dark SOC theme, server settings
 ├── detection/
-│   ├── __init__.py
-│   ├── config.py            # All detection thresholds & constants
+│   ├── config.py            # Detection thresholds & constants
 │   ├── rules.py             # Rule-based heuristic detectors
-│   ├── ml_detector.py       # Isolation Forest wrapper
-│   ├── risk_scorer.py       # Score computation & severity mapping
-│   └── alert_manager.py     # Alert lifecycle & deduplication
+│   ├── anomaly.py           # Isolation Forest ML anomaly detector
+│   └── risk_score.py        # Composite CVSS risk scoring engine
 ├── utils/
-│   ├── __init__.py
-│   ├── data_generator.py    # Synthetic network event generator
-│   └── helpers.py           # Shared formatting/utility functions
+│   ├── log_parser.py        # Schema validation & feature extraction
+│   ├── alert_manager.py     # Alert deduplication & persistence
+│   └── pipeline.py          # Unified pipeline & session initializer
 ├── pages/
-│   ├── 1_📊_Overview.py
-│   ├── 2_🔴_Live_Monitor.py
-│   ├── 3_🌐_Threat_Intel.py
-│   ├── 4_🤖_ML_Insights.py
-│   └── 5_🚨_Alerts.py
-├── models/
-│   ├── .gitkeep
-│   └── isolation_forest.pkl # Generated on first run
+│   ├── 01_📊_Overview.py       # KPIs, severity donut & trend charts
+│   ├── 02_📋_Log_Monitoring.py # Searchable security event feed
+│   ├── 03_🚨_Alerts.py         # Alert triage & lifecycle management
+│   ├── 04_📈_Analytics.py      # Threat analytics & port heatmaps
+│   └── 05_🔍_Investigation.py  # MITRE ATT&CK® workbench & timeline
 ├── data/
-│   ├── alerts.csv           # Persisted alert log
-│   └── events.csv           # Persisted event log
-├── screenshots/
-│   └── .gitkeep
+│   ├── cic_ids2017_historical_benchmark.csv # Real UNB benchmark intrusion data
+│   ├── aws_honeypot_attacks.csv             # Real AWS cloud honeypot telemetry
+│   ├── demo_security_logs.csv               # 610-event synthetic enterprise logs
+│   └── alerts.csv                           # Triaged alert records
+├── models/
+│   └── isolation_forest.pkl # Pre-trained anomaly model bundle
 ├── tests/
-│   ├── test_rules.py
-│   ├── test_ml_detector.py
-│   └── test_risk_scorer.py
-├── app.py                   # Streamlit entry point
-├── requirements.txt
+│   ├── test_detection_rules.py   # Detection & risk score tests
+│   ├── test_cloud_environment.py # Cloud & container specs tests
+│   └── test_cloud_api.py         # Starlette API endpoint tests
+├── app.py                   # Streamlit home & analysis dashboard
+├── api.py                   # Starlette Cloud SOC API Gateway
+├── Dockerfile               # Container deployment specification
+├── requirements.txt         # Production dependencies
 └── README.md
 ```
 

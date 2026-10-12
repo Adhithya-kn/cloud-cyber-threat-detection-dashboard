@@ -16,7 +16,7 @@ class TestDetectionRules(unittest.TestCase):
     """Test suite for detection heuristics and risk scoring."""
 
     def test_brute_force_rule(self):
-        now = datetime.now(timezone.utc)
+        now = datetime(2026, 10, 12, 12, 0, 0, tzinfo=timezone.utc)
         events = [
             {
                 "timestamp": now + timedelta(seconds=i * 5),
@@ -35,7 +35,7 @@ class TestDetectionRules(unittest.TestCase):
         self.assertEqual(dets[0]["source_ip"], "198.51.100.1")
 
     def test_port_scan_rule(self):
-        now = datetime.now(timezone.utc)
+        now = datetime(2026, 10, 12, 12, 0, 0, tzinfo=timezone.utc)
         events = [
             {
                 "timestamp": now + timedelta(seconds=i),
@@ -53,7 +53,7 @@ class TestDetectionRules(unittest.TestCase):
         self.assertEqual(dets[0]["threat_type"], "port_scan")
 
     def test_abnormal_traffic_rule(self):
-        now = datetime.now(timezone.utc)
+        now = datetime(2026, 10, 12, 12, 0, 0, tzinfo=timezone.utc)
         events = [
             {
                 "timestamp": now,

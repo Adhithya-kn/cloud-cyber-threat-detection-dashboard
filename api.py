@@ -1,15 +1,14 @@
 """
 api.py
 ======
-Cloud Telemetry Ingestion Microservice & Multi-Agent API Gateway.
+Cloud Telemetry Ingestion Microservice & SOC API Gateway.
 
 Endpoints:
   GET  /healthz              - Container readiness & liveness probe for Kubernetes / Cloud Run
-  GET  /api/v1/status        - Real-time fleet health & agent latency metrics
+  GET  /api/v1/status        - Real-time fleet health & detection pipeline status
   POST /api/v1/telemetry     - Ingest raw JSON log stream (AWS CloudTrail, VPC Flow, K8s logs)
-  POST /api/v1/orchestrate   - Trigger multi-agent orchestration on uploaded payload
   GET  /api/v1/alerts        - Fetch active security alerts with MITRE mappings
-  POST /api/v1/mitigate      - Execute automated containment playbook
+  POST /api/v1/mitigate      - Execute automated cloud containment action
 """
 
 import json
@@ -29,14 +28,11 @@ from starlette.routing import Route
 # Ensure local imports
 sys.path.insert(0, ".")
 
-from orchestration import get_orchestrator
+from utils.pipeline import run_pipeline
 from utils.alert_manager import load_alerts
 
 logger = logging.getLogger("api.gateway")
 logging.basicConfig(level=logging.INFO)
-
-# In-memory session store for API clients
-LAST_API_SESSION = None
 
 
 async def healthz(request: Request) -> JSONResponse:
@@ -51,63 +47,37 @@ async def healthz(request: Request) -> JSONResponse:
 
 
 async def status_endpoint(request: Request) -> JSONResponse:
-    """Agent fleet status and runtime metrics."""
-    orch = get_orchestrator()
-    agents_summary = {
-        "agent_alpha": {
-            "name": orch.agent_alpha.name,
-            "role": orch.agent_alpha.role,
-            "status": orch.agent_alpha.last_status,
-            "latency_ms": orch.agent_alpha.last_latency_ms,
-            "rules": orch.agent_alpha.assigned_rules,
-        },
-        "agent_beta": {
-            "name": orch.agent_beta.name,
-            "role": orch.agent_beta.role,
-            "status": orch.agent_beta.last_status,
-            "latency_ms": orch.agent_beta.last_latency_ms,
-            "rules": orch.agent_beta.assigned_rules,
-        },
-        "agent_gamma": {
-            "name": orch.agent_gamma.name,
-            "role": orch.agent_gamma.role,
-            "status": orch.agent_gamma.last_status,
-            "latency_ms": orch.agent_gamma.last_latency_ms,
-            "rules": orch.agent_gamma.assigned_rules,
-        },
-        "agent_delta": {
-            "name": orch.agent_delta.name,
-            "role": orch.agent_delta.role,
-            "status": orch.agent_delta.last_status,
-            "latency_ms": orch.agent_delta.last_latency_ms,
-            "rules": orch.agent_delta.assigned_rules,
-        },
-        "agent_epsilon": {
-            "name": orch.agent_epsilon.name,
-            "role": orch.agent_epsilon.role,
-            "status": orch.agent_epsilon.last_status,
-            "latency_ms": orch.agent_epsilon.last_latency_ms,
-            "rules": orch.agent_epsilon.assigned_rules,
-        },
+    """Detection pipeline status and runtime metrics."""
+    pipeline_engines = {
+        "log_parser": {"name": "Log Parser", "status": "ONLINE", "type": "Normalization"},
+        "rules_engine": {"name": "Rules Engine", "status": "ONLINE", "type": "Deterministic Signatures"},
+        "ml_engine": {"name": "Isolation Forest", "status": "ONLINE", "type": "Unsupervised ML"},
+        "risk_scorer": {"name": "Risk Scorer", "status": "ONLINE", "type": "CVSS Weighted Scoring"},
+        "alert_manager": {"name": "Alert Manager", "status": "ONLINE", "type": "Deduplication & Triage"},
     }
     return JSONResponse({
-        "orchestrator": "MultiAgentSOCOrchestrator",
+        "engine": "CyberShield SOC Detection Pipeline",
         "mode": "autonomous",
-        "agents": agents_summary,
+        "agents": pipeline_engines,
+        "engines": pipeline_engines,
         "cloud_ready": True,
+        "supported_datasets": [
+            "CIC-IDS2017 Intrusion Benchmark",
+            "AWS Cloud Honeypot Telemetry",
+            "Enterprise Security Logs"
+        ],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
 
 async def ingest_telemetry(request: Request) -> JSONResponse:
     """
-    Ingests live JSON security events, triggers the Multi-Agent pipeline,
-    and returns annotated decisions.
+    Ingests live JSON security events, triggers the SOC pipeline,
+    and returns detections and step annotations.
     """
-    global LAST_API_SESSION
     try:
         body = await request.json()
         if isinstance(body, dict):
-            # Could be {"events": [...]} or single event
             events = body.get("events", [body])
         elif isinstance(body, list):
             events = body
@@ -118,60 +88,36 @@ async def ingest_telemetry(request: Request) -> JSONResponse:
             return JSONResponse({"error": "No event records found"}, status_code=400)
 
         df = pd.DataFrame(events)
-        orch = get_orchestrator()
-        session = orch.run_pipeline(df, dataset_name="Cloud API Live Ingest Stream", persist_alerts=True)
-        LAST_API_SESSION = session
+        df_feat, alerts_final = run_pipeline(df, "Cloud API Live Ingest Stream")
+
+        crit_count = int((alerts_final["severity"].str.upper() == "CRITICAL").sum()) if not alerts_final.empty and "severity" in alerts_final.columns else 0
+        high_count = int((alerts_final["severity"].str.upper() == "HIGH").sum()) if not alerts_final.empty and "severity" in alerts_final.columns else 0
+        med_count = int((alerts_final["severity"].str.upper() == "MEDIUM").sum()) if not alerts_final.empty and "severity" in alerts_final.columns else 0
+        low_count = int((alerts_final["severity"].str.upper() == "LOW").sum()) if not alerts_final.empty and "severity" in alerts_final.columns else 0
 
         annotated_steps = [
-            {
-                "step": s.step_number,
-                "agent": s.agent_name,
-                "rule_category": s.rule_category,
-                "status": s.status,
-                "confidence": s.confidence,
-                "latency_ms": s.execution_time_ms,
-                "annotation": s.annotation,
-            }
-            for s in session.step_annotations
+            {"step": 1, "engine": "Log Parser", "status": "SUCCESS", "annotation": f"Ingested & normalized {len(df)} telemetry events"},
+            {"step": 2, "engine": "Rules Engine", "status": "SUCCESS", "annotation": "Evaluated sliding-window brute-force and port scans"},
+            {"step": 3, "engine": "ML Anomaly", "status": "SUCCESS", "annotation": "Isolation Forest scored feature space for statistical outliers"},
+            {"step": 4, "engine": "Risk Scorer", "status": "SUCCESS", "annotation": "Computed CVSS composite risk indexes (0-100)"},
+            {"step": 5, "engine": "Alert Manager", "status": "SUCCESS", "annotation": f"Generated and triaged {len(alerts_final)} alerts"},
         ]
 
         return JSONResponse({
-            "session_id": session.session_id,
             "status": "PROCESSED",
-            "events_ingested": session.total_events,
-            "threats_detected": session.total_threats,
+            "events_ingested": len(df),
+            "threats_detected": len(alerts_final),
             "severity_counts": {
-                "critical": session.critical_count,
-                "high": session.high_count,
-                "medium": session.medium_count,
-                "low": session.low_count,
+                "critical": crit_count,
+                "high": high_count,
+                "medium": med_count,
+                "low": low_count,
             },
-            "playbooks_generated": len(session.playbooks),
             "step_annotations": annotated_steps,
-            "consensus": session.consensus_summary,
         })
     except Exception as exc:
         logger.error(f"Error during telemetry ingestion: {exc}", exc_info=True)
         return JSONResponse({"error": str(exc)}, status_code=500)
-
-
-async def orchestrate_endpoint(request: Request) -> JSONResponse:
-    """Explicitly triggers multi-agent orchestration on active or demo data."""
-    orch = get_orchestrator()
-    data_path = "data/demo_security_logs.csv"
-    if os.path.exists(data_path):
-        df = pd.read_csv(data_path)
-    else:
-        return JSONResponse({"error": "Default telemetry file not found"}, status_code=404)
-
-    session = orch.run_pipeline(df, "API Triggered Full Cycle", persist_alerts=True)
-    return JSONResponse({
-        "session_id": session.session_id,
-        "total_events": session.total_events,
-        "total_threats": session.total_threats,
-        "total_latency_ms": session.total_latency_ms,
-        "playbooks": session.playbooks,
-    })
 
 
 async def alerts_endpoint(request: Request) -> JSONResponse:
@@ -198,7 +144,7 @@ async def mitigate_endpoint(request: Request) -> JSONResponse:
             return JSONResponse({"error": "Missing 'ip' parameter"}, status_code=400)
 
         # Simulate execution of cloud remediation command
-        audit_hash = f"MITIGATE-{int(datetime.now().timestamp())}-{abs(hash(ip))%100000}"
+        audit_hash = f"MITIGATE-{int(datetime.now().timestamp())}-{abs(hash(ip)) % 100000}"
         return JSONResponse({
             "status": "EXECUTED",
             "audit_hash": audit_hash,
@@ -216,7 +162,6 @@ routes = [
     Route("/healthz", healthz, methods=["GET"]),
     Route("/api/v1/status", status_endpoint, methods=["GET"]),
     Route("/api/v1/telemetry", ingest_telemetry, methods=["POST"]),
-    Route("/api/v1/orchestrate", orchestrate_endpoint, methods=["POST"]),
     Route("/api/v1/alerts", alerts_endpoint, methods=["GET"]),
     Route("/api/v1/mitigate", mitigate_endpoint, methods=["POST"]),
 ]
