@@ -137,11 +137,12 @@ footer { visibility: hidden; }
 
 .hud-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 2.2rem;
+    font-size: 1.85rem;
     font-weight: 800;
     line-height: 1.1;
     letter-spacing: -0.02em;
-    margin-top: 6px;
+    white-space: nowrap;
+    margin-top: 2px;
 }
 .hud-label {
     font-size: 0.76rem;
@@ -404,24 +405,19 @@ if not alerts_df.empty:
 
 k1, k2, k3, k4, k5 = st.columns(5)
 
-def render_hud_kpi(col, accent_class, icon, value, label, subtext, val_color="#00d4ff"):
+def render_hud_kpi(col, accent_class, value, label, subtext, val_color="#00d4ff"):
     col.markdown(f"""
     <div class="hud-kpi-card {accent_class}">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:1.3rem;">{icon}</span>
-            <span style="font-size:0.7rem; font-family:'JetBrains Mono', monospace; color:#64748b;">LIVE</span>
-        </div>
         <div class="hud-value" style="color:{val_color};">{value}</div>
         <div class="hud-label">{label}</div>
         <div class="hud-sub">{subtext}</div>
     </div>
     """, unsafe_allow_html=True)
 
-render_hud_kpi(k1, "hud-accent-cyan", "📡", f"{total_events:,}", "Analyzed Telemetry", "100% Ingested", "#00d4ff")
+render_hud_kpi(k1, "hud-accent-cyan", f"{total_events:,}", "Analyzed Telemetry", "100% Ingested", "#00d4ff")
 render_hud_kpi(
     k2,
     "hud-accent-red" if total_threats > 0 else "hud-accent-green",
-    "🚨" if total_threats > 0 else "🛡️",
     f"{total_threats:,}",
     "Threats Flagged",
     "Dual-Engine Verified" if total_threats > 0 else "Zero Anomalies",
@@ -430,7 +426,6 @@ render_hud_kpi(
 render_hud_kpi(
     k3,
     "hud-accent-red" if crit_count > 0 else "hud-accent-green",
-    "⚡",
     f"{crit_count:,}",
     "Critical Severity",
     "CVSS Score >= 90" if crit_count > 0 else "Zero Criticals",
@@ -439,7 +434,6 @@ render_hud_kpi(
 render_hud_kpi(
     k4,
     "hud-accent-orange" if high_count > 0 else "hud-accent-green",
-    "⚠️",
     f"{high_count:,}",
     "High Priority",
     "Immediate Triage" if high_count > 0 else "Perimeter Normal",
@@ -448,10 +442,9 @@ render_hud_kpi(
 render_hud_kpi(
     k5,
     "hud-accent-red" if avg_risk >= 70 else ("hud-accent-amber" if avg_risk > 0 else "hud-accent-green"),
-    "🎯",
-    f"{avg_risk}/100",
+    f"{avg_risk} / 100",
     "Mean Risk Index",
-    "Elevated Hostile Index" if avg_risk >= 70 else ("Nominal Baseline" if avg_risk == 0 else "Moderate Risk"),
+    "Elevated Risk" if avg_risk >= 70 else ("Nominal Baseline" if avg_risk == 0 else "Moderate Risk"),
     "#ef4444" if avg_risk >= 70 else ("#f59e0b" if avg_risk > 0 else "#10b981"),
 )
 
