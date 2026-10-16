@@ -924,5 +924,42 @@ with tab_report:
                 use_container_width=True,
             )
 
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("🏛️ **Dual-Engine System Architecture & Engineering Flow** (Click to Expand)", expanded=False):
+        arch_col1, arch_col2 = st.columns([1, 1])
+        with arch_col1:
+            st.markdown("""
+            <div style="background:rgba(15,23,42,0.85); border:1px solid rgba(0,212,255,0.25); border-radius:10px; padding:16px;">
+                <h5 style="color:#00d4ff; margin-top:0;">📡 Pipeline Flow Architecture</h5>
+                <ol style="color:#cbd5e1; font-size:0.88rem; line-height:1.7;">
+                    <li><b>Telemetry Ingestion:</b> Normalizes cloud VPC Flow Logs & CloudTrail into canonical 11-column CEF events.</li>
+                    <li><b>Feature Engineering:</b> Computes 5 behavioral metrics (failed logins, unique ports, request rate, byte volume, after-hours flag).</li>
+                    <li><b>Dual-Core Detection Engine:</b>
+                        <ul>
+                            <li><b>Core A:</b> Deterministic heuristic rules matched against MITRE ATT&CK techniques (T1110, T1046, T1048).</li>
+                            <li><b>Core B:</b> Unsupervised Isolation Forest (100 estimators, 5% contamination) for zero-day volumetric anomalies.</li>
+                        </ul>
+                    </li>
+                    <li><b>Risk Scoring & Triage:</b> Computes composite CVSS-aligned risk scores (0-100) and deduplicates repeated alerts within a 300s sliding window.</li>
+                    <li><b>Autonomous SOC Presentation:</b> Real-time operational status, interactive triage tables, and forensic playbook recommendations.</li>
+                </ol>
+            </div>
+            """, unsafe_allow_html=True)
+        with arch_col2:
+            st.markdown("""
+            <div style="background:rgba(15,23,42,0.85); border:1px solid rgba(16,185,129,0.25); border-radius:10px; padding:16px;">
+                <h5 style="color:#10b981; margin-top:0;">⚙️ Engineering Specifications</h5>
+                <ul style="color:#cbd5e1; font-size:0.88rem; line-height:1.7;">
+                    <li><b>Brute-Force Threshold:</b> > 5 failed logins within 5-minute sliding window</li>
+                    <li><b>Port Scan Threshold:</b> > 15 unique destination ports within 60 seconds</li>
+                    <li><b>Abnormal Exfiltration:</b> > 10 MB / 60 seconds</li>
+                    <li><b>ML Algorithm:</b> Scikit-learn <code>IsolationForest(n_estimators=100)</code></li>
+                    <li><b>Model Bundle:</b> In-memory cached joblib bundle (<code>models/isolation_forest.pkl</code>)</li>
+                    <li><b>Inference Latency:</b> < 15ms per batch</li>
+                    <li><b>Deployment:</b> Streamlit Cloud / Docker container (Zero-dependency cloud-native)</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+
 st.markdown("<hr style='border:1px solid rgba(56,189,248,0.15); margin:25px 0 10px 0;'>", unsafe_allow_html=True)
 st.caption("CyberShield · Cloud-Based Cyber Threat Detection & Autonomous SOC Platform · Enterprise Demonstration Edition")

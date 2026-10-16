@@ -25,46 +25,93 @@ The **Cloud-Based Cyber Threat Detection Dashboard** is a real-time security ope
 
 ---
 
-## Architecture
+## 🏛️ End-to-End System Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                  CYBER THREAT DETECTION PIPELINE                │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    classDef cloud fill:#0f172a,stroke:#00d4ff,stroke-width:2px,color:#e2e8f0;
+    classDef engine fill:#111827,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef rule fill:#1e293b,stroke:#f59e0b,stroke-width:1.5px,color:#fef08a;
+    classDef ml fill:#1e293b,stroke:#a855f7,stroke-width:1.5px,color:#e9d5ff;
+    classDef risk fill:#1e293b,stroke:#ef4444,stroke-width:2px,color:#fca5a5;
+    classDef ui fill:#090d16,stroke:#10b981,stroke-width:2.5px,color:#6ee7b7;
 
-  ┌──────────────┐     ┌───────────────────────────────────────┐
-  │  Data Layer  │────▶│          Detection Engine             │
-  │              │     │                                       │
-  │ • Baseline   │     │  ┌─────────────────────────────────┐  │
-  │   Telemetry  │     │  │  Rule-Based Heuristics          │  │
-  │ • Cyber      │     │  │  ┌─────────────┐ ┌───────────┐  │  │
-  │   Attacks    │     │  │  │ Brute Force │ │ Port Scan │  │  │
-  │ • CSV Feeds  │     │  │  └─────────────┘ └───────────┘  │  │
-  └──────────────┘     │  │  ┌───────────────────────────┐  │  │
-                        │  │  │   Abnormal Traffic        │  │  │
-                        │  │  └───────────────────────────┘  │  │
-                        │  └─────────────────────────────────┘  │
-                        │                                       │
-                        │  ┌─────────────────────────────────┐  │
-                        │  │  ML Anomaly Detection           │  │
-                        │  │  (Isolation Forest – sklearn)   │  │
-                        │  └─────────────────────────────────┘  │
-                        │                                       │
-                        │  ┌─────────────────────────────────┐  │
-                        │  │  Risk Scoring & Alert Manager   │  │
-                        │  │  Score 0-100 → LOW/MED/HIGH/CRIT│  │
-                        │  └─────────────────────────────────┘  │
-                        └───────────────────────────────────────┘
-                                          │
-                        ┌─────────────────▼─────────────────────┐
-                        │        Streamlit Dashboard            │
-                        │                                       │
-                        │  ① Live Operational Status & KPIs    │
-                        │  ② Dynamic Analytic Graphs            │
-                        │  ③ Interactive Alerts & Logs Tables   │
-                        │  ④ Deep Forensic Threat Dossier       │
-                        └───────────────────────────────────────┘
+    subgraph TELEMETRY ["📡 1. Cloud Telemetry Ingestion Layer"]
+        D1["🟢 Dataset 1: Baseline Normal (Routine Ops)"]
+        D2["🚨 Dataset 2: Active Cyber Attacks (Intrusions)"]
+        AWS["☁️ AWS CloudTrail & VPC Flow Logs (11-Col CEF)"]
+    end
+
+    subgraph PARSER ["⚙️ 2. Ingestion & Behavioral Feature Extraction"]
+        NORM["Canonical Normalizer & Schema Validator"]
+        FEATS["Behavioral Feature Vector<br>• failed_login_count &nbsp; • unique_ports_per_ip<br>• request_rate &nbsp; • bytes_per_source &nbsp; • is_after_hours"]
+    end
+
+    subgraph DETECTION ["⚡ 3. Dual-Core Detection Engine"]
+        subgraph HEURISTICS ["Core A: Rule-Based Heuristics (MITRE ATT&CK)"]
+            R1["🔑 T1110: Brute Force Detector<br>(>5 failed logins in 5 min)"]
+            R2["🌐 T1046: Port Reconnaissance<br>(>15 unique ports in 1 min)"]
+            R3["📦 T1048: Data Exfiltration<br>(Volumetric Traffic Burst)"]
+        end
+
+        subgraph ML_ENGINE ["Core B: Unsupervised Machine Learning"]
+            IF["🧠 Isolation Forest Anomaly Model<br>(100 Estimators · 5% Calibrated Contamination)"]
+        end
+    end
+
+    subgraph SCORING ["🎯 4. Composite Risk Scoring & Alert Manager"]
+        CVSS["CVSS-Aligned Composite Risk Scoring (0 - 100)"]
+        DEDUP["Sliding-Window Deduplication (300s Suppression)"]
+        ALERTS["🚨 Prioritized SOC Alerts: CRITICAL · HIGH · MEDIUM · LOW"]
+    end
+
+    subgraph SOC_UI ["🛡️ 5. Next-Gen CyberShield Command Dashboard"]
+        KPI["📊 Live HUD Status Beacon & KPI Tiles"]
+        CHARTS["📈 Dynamic Plotly Intelligence Analytics"]
+        TABLES["📋 Interactive Triage Table with Instant Filters"]
+        DOSSIER["🔍 Deep Forensic Incident Dossier & Cloud Playbooks"]
+    end
+
+    %% Pipeline Connections
+    D1 --> AWS
+    D2 --> AWS
+    AWS --> NORM
+    NORM --> FEATS
+    FEATS --> R1
+    FEATS --> R2
+    FEATS --> R3
+    FEATS --> IF
+
+    R1 --> CVSS
+    R2 --> CVSS
+    R3 --> CVSS
+    IF --> CVSS
+
+    CVSS --> DEDUP
+    DEDUP --> ALERTS
+
+    ALERTS --> KPI
+    ALERTS --> CHARTS
+    ALERTS --> TABLES
+    TABLES --> DOSSIER
+
+    class D1,D2,AWS cloud;
+    class NORM,FEATS engine;
+    class R1,R2,R3 rule;
+    class IF ml;
+    class CVSS,DEDUP,ALERTS risk;
+    class KPI,CHARTS,TABLES,DOSSIER ui;
 ```
+
+### 🧩 Architectural Layer Breakdown
+
+| Layer | Component | Function & Engineering Purpose |
+| :--- | :--- | :--- |
+| **1. Telemetry Ingestion** | Cloud Telemetry Feeds | Ingests real-world telemetry modeled after AWS VPC Flow Logs and CIC-IDS2017 intrusion benchmarks. |
+| **2. Feature Engineering** | Feature Extraction Pipeline | Dynamically computes 5 behavioral metrics (`failed_login_count`, `unique_ports_per_ip`, `request_rate`, `bytes_per_source`, `is_after_hours`). |
+| **3. Dual-Core Detection** | Heuristics + Isolation Forest | **Core A** applies deterministic rules mapped to MITRE ATT&CK; **Core B** uses unsupervised ML to isolate multidimensional outliers. |
+| **4. Risk Engine & Triage** | CVSS Scorer & Deduplication | Computes weighted 0–100 risk scores, classifies into 4 severity bands, and suppresses duplicate alerts within a 300s window. |
+| **5. Command Center UI** | Streamlit Next-Gen Cyber SOC | Delivers a radar status beacon, live HUD metric tiles, dynamic Plotly charts, interactive triage tables, and forensic playbooks. |
 
 ---
 
