@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # Valid values for the 'status' field
-VALID_STATUSES = {"NEW", "REVIEWING", "RESOLVED", "FALSE_POSITIVE"}
+VALID_STATUSES = {"NEW", "REVIEWING", "RESOLVED", "FALSE_POSITIVE", "MITIGATED", "INVESTIGATING"}
 
 # Severity thresholds derived from risk_score
 SEVERITY_THRESHOLDS = {
@@ -421,44 +421,36 @@ def load_alerts(filepath: str = "data/alerts.csv") -> pd.DataFrame:
 def update_alert_status(
     alert_id: str,
     new_status: str,
-    alerts_df: pd.DataFrame,
+    alerts_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """
     Update the ``status`` field of a specific alert in the DataFrame.
-
-    Parameters
-    ----------
-    alert_id : str
-        The unique identifier of the alert to update (e.g. 'ALT-20241007-001').
-    new_status : str
-        New status value.  Must be one of: NEW, REVIEWING, RESOLVED,
-        FALSE_POSITIVE.
-    alerts_df : pd.DataFrame
-        Alerts store to update (mutated in-place on the matching row).
-
-    Returns
-    -------
-    pd.DataFrame
-        Updated DataFrame.  Unchanged if the alert_id was not found.
-
-    Raises
-    ------
-    ValueError
-        If ``new_status`` is not one of the allowed status values.
     """
+    if alerts_df is None:
+        try:
+            import streamlit as st
+            alerts_df = st.session_state.get("alerts_df", pd.DataFrame())
+        except Exception:
+            alerts_df = pd.DataFrame()
+
     new_status = new_status.upper().strip()
     if new_status not in VALID_STATUSES:
-        raise ValueError(
-            f"Invalid status '{new_status}'. Must be one of {sorted(VALID_STATUSES)}."
-        )
+        logger.warning("Invalid status '%s'. Defaulting to 'REVIEWING'.", new_status)
+        new_status = "REVIEWING"
 
-    mask = alerts_df["alert_id"] == alert_id
-    if not mask.any():
-        logger.warning("update_alert_status: alert_id '%s' not found.", alert_id)
-        return alerts_df
+    if alerts_df is not None and not alerts_df.empty and "alert_id" in alerts_df.columns:
+        mask = alerts_df["alert_id"] == alert_id
+        if mask.any():
+            alerts_df.loc[mask, "status"] = new_status
+            logger.info("Alert '%s' status updated to '%s'.", alert_id, new_status)
+            try:
+                import streamlit as st
+                st.session_state["alerts_df"] = alerts_df
+            except Exception:
+                pass
+        else:
+            logger.warning("update_alert_status: alert_id '%s' not found.", alert_id)
 
-    alerts_df.loc[mask, "status"] = new_status
-    logger.info("Alert '%s' status updated to '%s'.", alert_id, new_status)
     return alerts_df
 
 

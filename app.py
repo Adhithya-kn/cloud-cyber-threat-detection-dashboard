@@ -189,51 +189,47 @@ with st.sidebar:
     soc_role = st.selectbox(
         "Active Analyst Persona:",
         [
-            "🛡️ Lead SOC Analyst (Triage & Response)",
-            "🔍 Threat Hunter (Forensic Analysis)",
-            "🚨 Incident Commander (Executive Oversight)",
+            "🛡️ Lead SOC Analyst",
+            "🔍 Threat Hunter",
+            "🚨 Incident Commander",
         ],
         index=0,
     )
 
     defense_policy = st.selectbox(
-        "Automated Defense Policy:",
+        "Defense Policy Mode:",
         [
-            "⚡ Active Defense (Auto Firewall Drop & MFA Enforcement)",
-            "👁️ Passive Observation (Log & Alert Only)",
+            "⚡ Active Defense",
+            "👁️ Passive Monitoring",
         ],
         index=0,
-    )
-
-    st.divider()
-
-    # Quick Filters for tables
-    st.markdown("### 🔍 Table Quick Filters")
-    severity_filter = st.selectbox(
-        "Filter by Severity:",
-        ["All Severities", "CRITICAL", "HIGH", "MEDIUM", "LOW"],
-        index=0,
-    )
-
-    threat_type_filter = st.selectbox(
-        "Filter by Threat Category:",
-        ["All Categories", "brute_force", "port_scan", "abnormal_traffic", "ml_anomaly"],
-        index=0,
+        help="Active Defense enables immediate mitigation actions; Passive Monitoring is read-only."
     )
 
     st.divider()
 
     if st.button("🔄 Reload & Reset Baseline", use_container_width=True):
         st.cache_data.clear()
+        if "scenario_alerts" in st.session_state:
+            st.session_state["scenario_alerts"].clear()
         st.session_state["selected_scenario"] = DEFAULT_DATASET_NAME
         st.rerun()
 
-    st.caption("CyberShield · Cloud Application Development Demonstration · Fast & Simplified SOC Platform")
+    st.caption("CyberShield · Cloud SOC Demonstration · Fast & Simplified Platform")
 
 
 # ── Load Selected Telemetry (Cached & Instant) ─────────────────────────────
 target_filepath = AVAILABLE_DATASETS[selected_scenario]
-logs_df, alerts_df = load_dataset_cached(target_filepath, selected_scenario)
+
+if "scenario_alerts" not in st.session_state:
+    st.session_state["scenario_alerts"] = {}
+
+logs_df, cached_alerts = load_dataset_cached(target_filepath, selected_scenario)
+
+if selected_scenario not in st.session_state["scenario_alerts"]:
+    st.session_state["scenario_alerts"][selected_scenario] = cached_alerts.copy()
+
+alerts_df = st.session_state["scenario_alerts"][selected_scenario]
 
 # Sync into session_state for any helper references
 st.session_state["logs_df"] = logs_df
@@ -539,7 +535,27 @@ with tab_alerts:
     if alerts_df.empty:
         st.success("✅ **No threat alerts detected in current telemetry.** All system metrics conform to authorized cloud operational baselines.")
     else:
-        # Filter table according to user selections
+        # Filter controls directly above alerts table
+        col_f1, col_f2, col_f3 = st.columns([1, 1, 1.5])
+        with col_f1:
+            severity_filter = st.selectbox(
+                "Filter by Severity:",
+                ["All Severities", "CRITICAL", "HIGH", "MEDIUM", "LOW"],
+                key="tab1_sev_filter",
+            )
+        with col_f2:
+            threat_type_filter = st.selectbox(
+                "Filter by Threat Category:",
+                ["All Categories", "brute_force", "port_scan", "abnormal_traffic", "ml_anomaly"],
+                key="tab1_type_filter",
+            )
+        with col_f3:
+            search_ip = st.text_input(
+                "🔍 Search by Hostile IP:",
+                placeholder="e.g. 185.220 or 192.168",
+                key="search_alert_ip",
+            )
+
         filtered_alerts = alerts_df.copy()
         
         if severity_filter != "All Severities" and "severity" in filtered_alerts.columns:
@@ -548,12 +564,10 @@ with tab_alerts:
         if threat_type_filter != "All Categories" and "threat_type" in filtered_alerts.columns:
             filtered_alerts = filtered_alerts[filtered_alerts["threat_type"].str.lower() == threat_type_filter.lower()]
 
-        # Search box by source IP
-        search_ip = st.text_input("🔍 Search Alerts by Offending Source IP:", placeholder="e.g. 185.220.101.35 or 192.168", key="search_alert_ip")
         if search_ip and "source_ip" in filtered_alerts.columns:
             filtered_alerts = filtered_alerts[filtered_alerts["source_ip"].astype(str).str.contains(search_ip, case=False, na=False)]
 
-        st.markdown(f"**Showing {len(filtered_alerts)} of {len(alerts_df)} threat alerts** (Filtered by: `{severity_filter}`, `{threat_type_filter}`):")
+        st.caption(f"Showing **{len(filtered_alerts)} of {len(alerts_df)}** threat alerts:")
 
         # Display Clean Interactive Table
         display_cols = [c for c in [
@@ -589,18 +603,27 @@ with tab_alerts:
 
             act_col1, act_col2 = st.columns([2, 1])
             with act_col1:
+                target_port_val = selected_row.get("destination_port")
+                if pd.notna(target_port_val) and str(target_port_val).lower() != "none":
+                    try:
+                        port_str = f"{int(float(target_port_val))} ({selected_row.get('protocol', 'TCP')})"
+                    except Exception:
+                        port_str = f"{target_port_val}"
+                else:
+                    port_str = "N/A"
+
                 st.markdown(f"""
                 <div class="action-card">
                     <div style="font-size:1.1rem; font-weight:700; color:#00d4ff;">
                         [{selected_row.get('alert_id', 'ALT')}] {str(selected_row.get('threat_type', 'Threat')).upper()} INCIDENT
                     </div>
                     <div style="font-size:0.85rem; color:#94a3b8; margin-top:2px;">
-                        MITRE ATT&CK: <b>{selected_row.get('mitre_attack', 'T1110 - Brute Force')}</b>
+                        MITRE ATT&CK: <b>{selected_row.get('mitre_attack', 'T1110 - Brute Force')}</b> &nbsp;|&nbsp; Current Status: <b style="color:#00d4ff;">{selected_row.get('status', 'NEW')}</b>
                     </div>
                     <hr style="border-color:#374151; margin:8px 0;">
                     <div style="font-size:0.9rem;">
                         <b>Offending Host:</b> <code>{selected_row.get('source_ip', 'N/A')}</code> &nbsp; | &nbsp;
-                        <b>Target Port:</b> <code>{selected_row.get('destination_port', 'N/A')} ({selected_row.get('protocol', 'TCP')})</code> &nbsp; | &nbsp;
+                        <b>Target Port:</b> <code>{port_str}</code> &nbsp; | &nbsp;
                         <b>Risk Score:</b> <span style="color:#ef4444; font-weight:700;">{selected_row.get('risk_score', 0)}/100</span>
                     </div>
                     <div style="font-size:0.85rem; color:#cbd5e1; margin-top:8px;">
@@ -614,20 +637,30 @@ with tab_alerts:
 
             with act_col2:
                 st.markdown("**⚡ Team Defense Mitigation Action:**")
-                st.caption(f"Acting as: **{soc_role.split('(')[0]}**")
+                st.caption(f"Acting as: **{soc_role}**")
                 
-                if st.button("⛔ Deploy Perimeter Firewall Block", use_container_width=True, type="primary"):
-                    update_alert_status(selected_aid, "MITIGATED")
-                    st.success(f"Firewall drop rule applied to {selected_row.get('source_ip')}! Status updated to MITIGATED.")
+                is_passive = "Passive" in defense_policy
+                if is_passive:
+                    st.info("👁️ Read-only Monitoring active. Switch defense policy in sidebar to execute countermeasures.")
+
+                if st.button("⛔ Deploy Perimeter Firewall Block", use_container_width=True, type="primary", disabled=is_passive):
+                    updated_alerts = update_alert_status(selected_aid, "MITIGATED", alerts_df)
+                    st.session_state["scenario_alerts"][selected_scenario] = updated_alerts
+                    st.session_state["alerts_df"] = updated_alerts
+                    st.success(f"Firewall drop rule applied to {selected_row.get('source_ip')}! Status: MITIGATED.")
                     st.rerun()
 
-                if st.button("🔒 Force MFA & User Lockout", use_container_width=True):
-                    update_alert_status(selected_aid, "INVESTIGATING")
-                    st.info(f"Account lockout and MFA challenge enforced for target. Status set to INVESTIGATING.")
+                if st.button("🔒 Force MFA & User Lockout", use_container_width=True, disabled=is_passive):
+                    updated_alerts = update_alert_status(selected_aid, "INVESTIGATING", alerts_df)
+                    st.session_state["scenario_alerts"][selected_scenario] = updated_alerts
+                    st.session_state["alerts_df"] = updated_alerts
+                    st.info(f"Account lockout and MFA challenge enforced! Status: INVESTIGATING.")
                     st.rerun()
 
-                if st.button("✅ Mark Incident Resolved", use_container_width=True):
-                    update_alert_status(selected_aid, "RESOLVED")
+                if st.button("✅ Mark Incident Resolved", use_container_width=True, disabled=is_passive):
+                    updated_alerts = update_alert_status(selected_aid, "RESOLVED", alerts_df)
+                    st.session_state["scenario_alerts"][selected_scenario] = updated_alerts
+                    st.session_state["alerts_df"] = updated_alerts
                     st.success(f"Alert {selected_aid} marked as RESOLVED.")
                     st.rerun()
 
