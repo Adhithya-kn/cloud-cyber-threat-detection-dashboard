@@ -1,7 +1,6 @@
 # 🛡️ Cloud-Based Cyber Threat Detection Dashboard
 
 [![Live Demo](https://img.shields.io/badge/Streamlit%20Cloud-Live%20App-00D4FF?logo=streamlit&logoColor=white)](https://cloud-cyber-threat-detection-dashboard-sruvkhzhhjelddy9unmbhn.streamlit.app/)
-[![Investigation Workbench](https://img.shields.io/badge/Workbench-Investigation-FF4B4B?logo=streamlit&logoColor=white)](https://cloud-cyber-threat-detection-dashboard-sruvkhzhhjelddy9unmbhn.streamlit.app/Investigation-)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28%2B-FF4B4B?logo=streamlit&logoColor=white)
 ![Scikit-learn](https://img.shields.io/badge/scikit--learn-1.3%2B-F7931E?logo=scikitlearn&logoColor=white)
@@ -12,7 +11,6 @@
 
 ## 🌐 Live Cloud Deployment
 - **Live Streamlit App**: [cloud-cyber-threat-detection-dashboard.streamlit.app](https://cloud-cyber-threat-detection-dashboard-sruvkhzhhjelddy9unmbhn.streamlit.app/)
-- **Investigation Workbench Direct**: [cloud-cyber-threat-detection-dashboard.streamlit.app/Investigation-](https://cloud-cyber-threat-detection-dashboard-sruvkhzhhjelddy9unmbhn.streamlit.app/Investigation-)
 - **GitHub Repository**: [Adhithya-kn/cloud-cyber-threat-detection-dashboard](https://github.com/Adhithya-kn/cloud-cyber-threat-detection-dashboard)
 
 ---
@@ -64,7 +62,7 @@ The **Cloud-Based Cyber Threat Detection Dashboard** is a real-time security ope
                         │  ① Live Operational Status & KPIs    │
                         │  ② Dynamic Analytic Graphs            │
                         │  ③ Interactive Alerts & Logs Tables   │
-                        │  ④ Real-Life SOC Team Remediation     │
+                        │  ④ Deep Forensic Threat Dossier       │
                         └───────────────────────────────────────┘
 ```
 
@@ -78,8 +76,8 @@ The **Cloud-Based Cyber Threat Detection Dashboard** is a real-time security ope
 |-----------|-------------|
 | **Operational Status & KPIs** | Live health banner (Safe vs Attack in progress), ingested event counters, active alerts, high/critical severity metrics, and average risk index |
 | **Analytic Graphs** | Dynamic Plotly visualizations that vary by dataset: threat distribution donut, severity breakdown, telemetry timeline spike detection, and top offending IPs / target ports |
-| **Alerts & SOC Triage Table** | Filterable table by severity & threat category; interactive selection of any alert to inspect root cause narrative, MITRE ATT&CK technique, and execute real-life SOC defense actions |
-| **Security Logs Table** | Searchable & filterable stream of raw telemetry events with search by IP or user |
+| **Alerts & Deep Forensic Dossier** | Filterable table by severity, threat category, and source IP; interactive inspection of any alert to view root cause narrative, MITRE ATT&CK technique, dual-engine validation, and recommended cloud countermeasures |
+| **Security Logs Table** | Searchable & filterable stream of raw telemetry events with search by IP or event type |
 | **Executive Dossier** | Human-readable executive summary and one-click export for reports (TXT) and alerts (CSV) |
 
 ### 🔍 Detection Engine
@@ -101,7 +99,6 @@ The **Cloud-Based Cyber Threat Detection Dashboard** is a real-time security ope
 | Numerical computing | [NumPy](https://numpy.org) | ≥ 1.24 |
 | Machine learning | [scikit-learn](https://scikit-learn.org) | ≥ 1.3 |
 | Interactive charts | [Plotly](https://plotly.com/python/) | ≥ 5.17 |
-| Declarative charts | [Altair](https://altair-viz.github.io) | ≥ 5.0 |
 | Model persistence | [Joblib](https://joblib.readthedocs.io) | ≥ 1.3 |
 | Date utilities | [python-dateutil](https://dateutil.readthedocs.io) | ≥ 2.8 |
 
@@ -122,16 +119,12 @@ cloud-cyber-threat-detection-dashboard/
 │   ├── log_parser.py        # Schema validation & feature extraction
 │   ├── alert_manager.py     # Alert deduplication & persistence
 │   └── pipeline.py          # Unified pipeline & session initializer
-├── pages/
-│   ├── 01_📊_Overview.py       # KPIs, severity donut & trend charts
-│   ├── 02_📋_Log_Monitoring.py # Searchable security event feed
-│   ├── 03_🚨_Alerts.py         # Alert triage & lifecycle management
-│   ├── 04_📈_Analytics.py      # Threat analytics & port heatmaps
-│   └── 05_🔍_Investigation.py  # MITRE ATT&CK® workbench & timeline
 ├── data/
+│   ├── dataset_1_normal_baseline.csv        # 300-event clean operational baseline
+│   ├── demo_security_logs.csv               # 610-event multi-vector intrusion logs
 │   ├── cic_ids2017_historical_benchmark.csv # Real UNB benchmark intrusion data
 │   ├── aws_honeypot_attacks.csv             # Real AWS cloud honeypot telemetry
-│   ├── demo_security_logs.csv               # 610-event synthetic enterprise logs
+│   ├── generate_demo_data.py                # Telemetry generator script
 │   └── alerts.csv                           # Triaged alert records
 ├── models/
 │   └── isolation_forest.pkl # Pre-trained anomaly model bundle
@@ -139,7 +132,7 @@ cloud-cyber-threat-detection-dashboard/
 │   ├── test_detection_rules.py   # Detection & risk score tests
 │   ├── test_cloud_environment.py # Cloud & container specs tests
 │   └── test_cloud_api.py         # Starlette API endpoint tests
-├── app.py                   # Streamlit home & analysis dashboard
+├── app.py                   # Streamlit cyber SOC dashboard (Next-Gen UI)
 ├── api.py                   # Starlette Cloud SOC API Gateway
 ├── Dockerfile               # Container deployment specification
 ├── requirements.txt         # Production dependencies
@@ -249,20 +242,17 @@ docker run -p 8501:8501 cyber-threat-dashboard
 
 ## Testing
 
-Unit tests are located in the `tests/` directory and use **pytest**.
+Unit tests are located in the `tests/` directory:
 
 ```bash
-pip install pytest
-pytest tests/ -v
+python -m unittest discover tests
 ```
 
 | Test File | Coverage |
 |-----------|----------|
-| `test_rules.py` | Brute-force, port-scan, and traffic-spike rule logic |
-| `test_ml_detector.py` | Model training, prediction, and feature-vector validation |
-| `test_risk_scorer.py` | Score calculation, severity mapping, and critical-port boosting |
-
-See [Test Plan](TESTPLAN.md) for detailed test case specifications.
+| `test_detection_rules.py` | Brute-force, port-scan, traffic-spike rule logic & risk scoring |
+| `test_cloud_environment.py` | Cloud telemetry pipeline & environment specifications |
+| `test_cloud_api.py` | Cloud SOC ingestion & mitigation API endpoint tests |
 
 ---
 
