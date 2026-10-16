@@ -22,7 +22,6 @@ from utils.pipeline import (
     ensure_session_data,
     MITRE_MAP,
 )
-from utils.alert_manager import update_alert_status, save_alerts
 
 # ── Curated Demonstration Scenarios (Only Two Datasets) ─────────────────────
 AVAILABLE_DATASETS = {
@@ -181,30 +180,6 @@ with st.sidebar:
         help="Switch between clean normal operations and live attack incident telemetry."
     )
     st.session_state["selected_scenario"] = selected_scenario
-
-    st.divider()
-
-    # Real-life Working Group / SOC Team Persona
-    st.markdown("### 👥 SOC Team Working System")
-    soc_role = st.selectbox(
-        "Active Analyst Persona:",
-        [
-            "🛡️ Lead SOC Analyst",
-            "🔍 Threat Hunter",
-            "🚨 Incident Commander",
-        ],
-        index=0,
-    )
-
-    defense_policy = st.selectbox(
-        "Defense Policy Mode:",
-        [
-            "⚡ Active Defense",
-            "👁️ Passive Monitoring",
-        ],
-        index=0,
-        help="Active Defense enables immediate mitigation actions; Passive Monitoring is read-only."
-    )
 
     st.divider()
 
@@ -592,77 +567,6 @@ with tab_alerts:
                 "suggested_action": st.column_config.TextColumn("Recommended Playbook Action"),
             }
         )
-
-        # Incident Drill-Down & Real-Life SOC Action
-        st.markdown("#### 🛠️ Real-Life Incident Remediation & SOC Team Action")
-        alert_ids = filtered_alerts["alert_id"].tolist() if not filtered_alerts.empty else alerts_df["alert_id"].tolist()
-        
-        if alert_ids:
-            selected_aid = st.selectbox("Select Alert to Inspect & Mitigate:", alert_ids, key="selected_alert_inspect")
-            selected_row = alerts_df[alerts_df["alert_id"] == selected_aid].iloc[0]
-
-            act_col1, act_col2 = st.columns([2, 1])
-            with act_col1:
-                target_port_val = selected_row.get("destination_port")
-                if pd.notna(target_port_val) and str(target_port_val).lower() != "none":
-                    try:
-                        port_str = f"{int(float(target_port_val))} ({selected_row.get('protocol', 'TCP')})"
-                    except Exception:
-                        port_str = f"{target_port_val}"
-                else:
-                    port_str = "N/A"
-
-                st.markdown(f"""
-                <div class="action-card">
-                    <div style="font-size:1.1rem; font-weight:700; color:#00d4ff;">
-                        [{selected_row.get('alert_id', 'ALT')}] {str(selected_row.get('threat_type', 'Threat')).upper()} INCIDENT
-                    </div>
-                    <div style="font-size:0.85rem; color:#94a3b8; margin-top:2px;">
-                        MITRE ATT&CK: <b>{selected_row.get('mitre_attack', 'T1110 - Brute Force')}</b> &nbsp;|&nbsp; Current Status: <b style="color:#00d4ff;">{selected_row.get('status', 'NEW')}</b>
-                    </div>
-                    <hr style="border-color:#374151; margin:8px 0;">
-                    <div style="font-size:0.9rem;">
-                        <b>Offending Host:</b> <code>{selected_row.get('source_ip', 'N/A')}</code> &nbsp; | &nbsp;
-                        <b>Target Port:</b> <code>{port_str}</code> &nbsp; | &nbsp;
-                        <b>Risk Score:</b> <span style="color:#ef4444; font-weight:700;">{selected_row.get('risk_score', 0)}/100</span>
-                    </div>
-                    <div style="font-size:0.85rem; color:#cbd5e1; margin-top:8px;">
-                        <b>Root Cause Narrative:</b> {selected_row.get('reason', 'Threshold exceeded')}
-                    </div>
-                    <div style="font-size:0.85rem; color:#93c5fd; margin-top:6px;">
-                        <b>Playbook Recommendation:</b> {selected_row.get('suggested_action', 'Isolate IP at firewall.')}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with act_col2:
-                st.markdown("**⚡ Team Defense Mitigation Action:**")
-                st.caption(f"Acting as: **{soc_role}**")
-                
-                is_passive = "Passive" in defense_policy
-                if is_passive:
-                    st.info("👁️ Read-only Monitoring active. Switch defense policy in sidebar to execute countermeasures.")
-
-                if st.button("⛔ Deploy Perimeter Firewall Block", use_container_width=True, type="primary", disabled=is_passive):
-                    updated_alerts = update_alert_status(selected_aid, "MITIGATED", alerts_df)
-                    st.session_state["scenario_alerts"][selected_scenario] = updated_alerts
-                    st.session_state["alerts_df"] = updated_alerts
-                    st.success(f"Firewall drop rule applied to {selected_row.get('source_ip')}! Status: MITIGATED.")
-                    st.rerun()
-
-                if st.button("🔒 Force MFA & User Lockout", use_container_width=True, disabled=is_passive):
-                    updated_alerts = update_alert_status(selected_aid, "INVESTIGATING", alerts_df)
-                    st.session_state["scenario_alerts"][selected_scenario] = updated_alerts
-                    st.session_state["alerts_df"] = updated_alerts
-                    st.info(f"Account lockout and MFA challenge enforced! Status: INVESTIGATING.")
-                    st.rerun()
-
-                if st.button("✅ Mark Incident Resolved", use_container_width=True, disabled=is_passive):
-                    updated_alerts = update_alert_status(selected_aid, "RESOLVED", alerts_df)
-                    st.session_state["scenario_alerts"][selected_scenario] = updated_alerts
-                    st.session_state["alerts_df"] = updated_alerts
-                    st.success(f"Alert {selected_aid} marked as RESOLVED.")
-                    st.rerun()
 
 
 # ── TAB 2: Cloud Security Activity Logs Table ──────────────────────────────
