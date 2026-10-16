@@ -20,12 +20,17 @@ sys.path.insert(0, ".")
 from utils.pipeline import (
     run_pipeline,
     ensure_session_data,
-    AVAILABLE_DATASETS,
-    DEFAULT_DATASET_NAME,
-    DEFAULT_DATASET_PATH,
     MITRE_MAP,
 )
 from utils.alert_manager import update_alert_status, save_alerts
+
+# ── Curated Demonstration Scenarios (Only Two Datasets) ─────────────────────
+AVAILABLE_DATASETS = {
+    "🟢 Dataset 1: Normal Cloud Activity (Routine Baseline)": "data/dataset_1_normal_baseline.csv",
+    "🚨 Dataset 2: Active Cyber Attack Incidents (Intrusions & Threats)": "data/demo_security_logs.csv",
+}
+DEFAULT_DATASET_NAME = "🚨 Dataset 2: Active Cyber Attack Incidents (Intrusions & Threats)"
+DEFAULT_DATASET_PATH = "data/demo_security_logs.csv"
 
 # ── Streamlit Page Configuration ───────────────────────────────────────────
 st.set_page_config(
@@ -434,24 +439,37 @@ g_col3, g_col4 = st.columns([1, 1])
 # Chart 3: Security Telemetry Timeline & Attack Spikes
 with g_col3:
     if not logs_df.empty and "timestamp" in logs_df.columns:
-        logs_df_time = logs_df.set_index("timestamp").resample("1T").size().reset_index(name="Event Frequency")
-        fig_time = px.area(
-            logs_df_time,
-            x="timestamp",
-            y="Event Frequency",
-            title="📈 Telemetry Ingestion Timeline & Spike Detection",
-            color_discrete_sequence=["#00d4ff" if not is_attack_scenario else "#ef4444"],
-        )
-        fig_time.update_layout(
-            paper_bgcolor="#111827",
-            plot_bgcolor="#111827",
-            font=dict(color="#e2e8f0"),
-            height=250,
-            margin=dict(t=40, b=10, l=10, r=10),
-            xaxis=dict(gridcolor="#1f2937", title="Timeline (UTC)"),
-            yaxis=dict(gridcolor="#1f2937", title="Events / Minute"),
-        )
-        st.plotly_chart(fig_time, use_container_width=True)
+        try:
+            ts_series = pd.to_datetime(logs_df["timestamp"], errors="coerce").dropna()
+            if not ts_series.empty:
+                timeline_counts = ts_series.dt.floor("1min").value_counts().sort_index()
+                logs_df_time = timeline_counts.reset_index()
+                logs_df_time.columns = ["timestamp", "Event Frequency"]
+            else:
+                logs_df_time = pd.DataFrame(columns=["timestamp", "Event Frequency"])
+        except Exception:
+            logs_df_time = pd.DataFrame(columns=["timestamp", "Event Frequency"])
+
+        if not logs_df_time.empty:
+            fig_time = px.area(
+                logs_df_time,
+                x="timestamp",
+                y="Event Frequency",
+                title="📈 Telemetry Ingestion Timeline & Spike Detection",
+                color_discrete_sequence=["#00d4ff" if not is_attack_scenario else "#ef4444"],
+            )
+            fig_time.update_layout(
+                paper_bgcolor="#111827",
+                plot_bgcolor="#111827",
+                font=dict(color="#e2e8f0"),
+                height=250,
+                margin=dict(t=40, b=10, l=10, r=10),
+                xaxis=dict(gridcolor="#1f2937", title="Timeline (UTC)"),
+                yaxis=dict(gridcolor="#1f2937", title="Events / Minute"),
+            )
+            st.plotly_chart(fig_time, use_container_width=True)
+        else:
+            st.info("No timeline events to display.")
 
 # Chart 4: Top Targeted Cloud Ports or Top Offending IPs
 with g_col4:
