@@ -1,17 +1,3 @@
 alert_id,timestamp,threat_type,source_ip,target_ip,source_port,destination_port,protocol,risk_score,severity,reason,score_reason,evidence_count,confidence,status,suggested_action,mitre_attack
-ALT-20261012-001,2026-10-12T18:51:06.880261+00:00,brute_force,172.16.0.1,192.168.10.14,,,UNKNOWN,90,CRITICAL,45 failed login attempts from 172.16.0.1 within a 5-minute window (threshold: 5).,"Base score for 'brute_force': +65
-High confidence (100% > 80 %): +15
-High evidence count (45 > 20): +10
-Final (clamped) score: 90",45,1.0,NEW,Block source IP and enforce MFA. Review account lockout policy.,T1110 — Brute Force (Credential Access)
-ALT-20261012-002,2026-10-12T18:51:06.882313+00:00,port_scan,172.16.0.1,192.168.10.50,,,UNKNOWN,65,HIGH,172.16.0.1 contacted 21 unique destination ports within 60s (threshold: 15).,"Base score for 'port_scan': +55
-High evidence count (21 > 20): +10
-Final (clamped) score: 65",21,0.35,NEW,Isolate source IP. Check firewall rules for open ports.,T1046 — Network Service Discovery (Discovery)
-ALT-20261012-003,2026-10-12T18:51:06.884385+00:00,abnormal_traffic,192.168.10.25,205.174.165.73,,,UNKNOWN,65,HIGH,192.168.10.25 transferred 218.87 MB within 60s (threshold: 10 MB). 10 flow record(s) in window.,"Base score for 'abnormal_traffic': +50
-High confidence (100% > 80 %): +15
-Final (clamped) score: 65",10,1.0,NEW,Rate-limit source IP. Investigate data exfiltration possibility.,T1048 — Exfiltration Over Alternative Protocol (Exfiltration)
-ALT-20261012-004,2026-10-12T18:51:06.886431+00:00,ml_anomaly,192.168.10.25,205.174.165.73,,,UNKNOWN,45,MEDIUM,"ML Isolation Forest flagged row as anomalous (score=-0.0904). Features: [failed_login_count=0.00, unique_ports_per_ip=1.00, request_rate=10.00, bytes_per_source=218866120.00].","Base score for 'ml_anomaly': +45
-Final (clamped) score: 45",1,0.5904,NEW,Investigate manually. Review related log events for context.,T1078 — Behavioral Anomaly / Anomaly in Access (Defense Evasion)
-ALT-20261012-005,2026-10-12T18:51:06.897956+00:00,ml_anomaly,172.16.0.1,192.168.10.50,,,UNKNOWN,45,MEDIUM,"ML Isolation Forest flagged row as anomalous (score=-0.0420). Features: [failed_login_count=21.00, unique_ports_per_ip=21.00, request_rate=21.00, bytes_per_source=1344.00].","Base score for 'ml_anomaly': +45
-Final (clamped) score: 45",1,0.542,NEW,Investigate manually. Review related log events for context.,T1078 — Behavioral Anomaly / Anomaly in Access (Defense Evasion)
-ALT-20261012-006,2026-10-12T18:51:06.919464+00:00,ml_anomaly,192.168.10.11,1.1.1.1,,,UNKNOWN,45,MEDIUM,"ML Isolation Forest flagged row as anomalous (score=-0.0283). Features: [failed_login_count=0.00, unique_ports_per_ip=3.00, request_rate=3.00, bytes_per_source=61380.00].","Base score for 'ml_anomaly': +45
-Final (clamped) score: 45",1,0.5283,NEW,Investigate manually. Review related log events for context.,T1078 — Behavioral Anomaly / Anomaly in Access (Defense Evasion)
+ALT-20261016-001,2026-10-16T06:36:12.415770+00:00,brute_force,198.51.100.77,10.0.0.8,,,UNKNOWN,65,HIGH,12 failed login attempts from 198.51.100.77 within a 5-minute window (threshold: 5).,"Base score for 'brute_force': +65
+Final (clamped) score: 65",12,0.8,NEW,Block source IP and enforce MFA. Review account lockout policy.,T1110 — Brute Force (Credential Access)

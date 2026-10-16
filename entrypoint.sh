@@ -29,12 +29,12 @@ if [ ! -f "models/isolation_forest.pkl" ]; then
     python3 -c "
 import pandas as pd
 from detection.anomaly import train_model
-from utils.log_parser import run_pipeline
+from utils.pipeline import run_pipeline
 import os
 
 data_path = 'data/demo_security_logs.csv'
 if os.path.exists(data_path):
-    df = run_pipeline(data_path)
+    df, _ = run_pipeline(pd.read_csv(data_path))
     train_model(df)
     print('✅ Baseline Isolation Forest model trained successfully.')
 " || echo "⚠️ Model initialization skipped; will train on first web request."

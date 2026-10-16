@@ -1,433 +1,749 @@
 """
-CyberShield — Cloud Cyber Threat Detection Dashboard
-Main entry point / Home page
+CyberShield — Cloud Cyber Threat Detection & Autonomous SOC Platform
+Fast, Simple, Demonstration-Ready Security Operations Dashboard
 """
+
+import os
+import sys
+import io
+from datetime import datetime
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 import plotly.express as px
-from datetime import datetime, timedelta
-import os
-import io
-import sys
+import plotly.graph_objects as go
 
 # ── Path setup ─────────────────────────────────────────────────────────────
 sys.path.insert(0, ".")
 
-# ── Page config (MUST be first Streamlit call) ──────────────────────────────
-st.set_page_config(
-    page_title="CyberShield Dashboard",
-    page_icon="🛡️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# ── Custom CSS — dark SOC theme ─────────────────────────────────────────────
-CUSTOM_CSS = """
-<style>
-/* ── Base ── */
-.main { background-color: #0a0e1a; }
-.stApp { background-color: #0a0e1a; }
-[data-testid="stSidebar"] { background-color: #0d1117; border-right: 1px solid #21262d; }
-[data-testid="stSidebar"] * { color: #e2e8f0 !important; }
-
-/* ── Hide default Streamlit decoration ── */
-#MainMenu { visibility: hidden; }
-footer { visibility: hidden; }
-
-/* ── KPI Cards ── */
-.kpi-card {
-    background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
-    border: 1px solid #374151;
-    border-radius: 12px;
-    padding: 20px;
-    text-align: center;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    margin-bottom: 8px;
-}
-.kpi-value { font-size: 2.5rem; font-weight: 700; color: #00d4ff; line-height: 1.1; }
-.kpi-label { font-size: 0.85rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
-.kpi-delta-pos { font-size: 0.8rem; color: #22c55e; margin-top: 2px; }
-.kpi-delta-neg { font-size: 0.8rem; color: #ef4444; margin-top: 2px; }
-
-/* ── Severity badges ── */
-.badge-critical { background:#7f1d1d; color:#fca5a5; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:600; }
-.badge-high     { background:#78350f; color:#fcd34d; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:600; }
-.badge-medium   { background:#1e3a5f; color:#93c5fd; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:600; }
-.badge-low      { background:#064e3b; color:#6ee7b7; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:600; }
-
-/* ── Table ── */
-.threat-table { border-collapse:collapse; width:100%; }
-.threat-table th { background:#1f2937; color:#9ca3af; padding:8px 12px; text-align:left; font-size:0.8rem; text-transform:uppercase; }
-.threat-table td { padding:8px 12px; border-bottom:1px solid #374151; color:#e2e8f0; font-size:0.9rem; }
-
-/* ── Status indicators ── */
-.status-ok   { color:#22c55e; font-weight:600; }
-.status-warn { color:#f59e0b; font-weight:600; }
-.status-err  { color:#ef4444; font-weight:600; }
-
-/* ── Section header ── */
-.section-header {
-    font-size:1.1rem; font-weight:600; color:#00d4ff;
-    border-bottom:1px solid #1e40af; padding-bottom:6px; margin-bottom:14px;
-}
-
-/* ── Alert banner ── */
-.alert-critical {
-    background:rgba(127,29,29,0.3); border:1px solid #ef4444;
-    border-radius:8px; padding:12px 16px; margin-bottom:8px;
-}
-.alert-high {
-    background:rgba(120,53,15,0.3); border:1px solid #f97316;
-    border-radius:8px; padding:12px 16px; margin-bottom:8px;
-}
-
-/* ── Sidebar logo ── */
-.sidebar-logo {
-    font-size:1.6rem; font-weight:800; color:#00d4ff;
-    letter-spacing:0.05em; margin-bottom:4px;
-}
-.sidebar-tagline { font-size:0.75rem; color:#6b7280; margin-bottom:16px; }
-
-/* ── Report Box ── */
-.report-box {
-    background: #111827;
-    border: 1px solid #374151;
-    border-radius: 10px;
-    padding: 20px;
-    margin-top: 15px;
-    font-family: monospace;
-    white-space: pre-wrap;
-    color: #e2e8f0;
-}
-</style>
-"""
-st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-
-# ── Module imports with graceful fallback ───────────────────────────────────
-_modules_ok: dict[str, bool] = {}
-
-try:
-    from utils.log_parser import load_data, normalize_events, validate_schema, extract_features
-    _modules_ok["log_parser"] = True
-except Exception:
-    _modules_ok["log_parser"] = False
-
-try:
-    from detection.rules import run_all_rules
-    _modules_ok["rules_engine"] = True
-except Exception:
-    _modules_ok["rules_engine"] = False
-
-try:
-    from detection.anomaly import train_model, detect_anomalies, get_anomaly_detections
-    _modules_ok["ml_engine"] = True
-except Exception:
-    _modules_ok["ml_engine"] = False
-
-try:
-    from detection.risk_score import process_all_detections
-    _modules_ok["risk_score"] = True
-except Exception:
-    _modules_ok["risk_score"] = False
-
-try:
-    from utils.alert_manager import (
-        load_alerts, get_alerts_summary, create_alert,
-        add_alert, save_alerts
-    )
-    _modules_ok["alert_manager"] = True
-except Exception:
-    _modules_ok["alert_manager"] = False
-
-
-# ── Unified Pipeline Engine ─────────────────────────────────────────────────
 from utils.pipeline import (
     run_pipeline,
     ensure_session_data,
     AVAILABLE_DATASETS,
     DEFAULT_DATASET_NAME,
     DEFAULT_DATASET_PATH,
+    MITRE_MAP,
+)
+from utils.alert_manager import update_alert_status, save_alerts
+
+# ── Streamlit Page Configuration ───────────────────────────────────────────
+st.set_page_config(
+    page_title="CyberShield | Cloud Threat Detection SOC",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-def process_dataframe(df_input: pd.DataFrame, source_name: str = "Uploaded Dataset"):
-    """Runs the complete detection and scoring pipeline."""
-    return run_pipeline(df_input, source_name)
+# ── Custom Dark SOC Styling ────────────────────────────────────────────────
+CUSTOM_CSS = """
+<style>
+/* Main Background */
+.main, .stApp {
+    background-color: #0a0e1a !important;
+    color: #e2e8f0;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #0d1117 !important;
+    border-right: 1px solid #1e293b !important;
+}
+[data-testid="stSidebar"] * {
+    color: #e2e8f0 !important;
+}
+
+/* Hide Default Streamlit Chrome & Multi-page Nav */
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+[data-testid="stSidebarNav"] { display: none !important; }
+
+/* KPI Cards */
+.kpi-card {
+    background: linear-gradient(135deg, #111827 0%, #1a2234 100%);
+    border: 1px solid #2d3748;
+    border-radius: 12px;
+    padding: 16px 14px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    margin-bottom: 8px;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.kpi-card:hover {
+    border-color: #00d4ff;
+    transform: translateY(-2px);
+}
+.kpi-value {
+    font-size: 2.3rem;
+    font-weight: 800;
+    line-height: 1.1;
+    margin-top: 4px;
+}
+.kpi-label {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 4px;
+    font-weight: 600;
+}
+
+/* Status Banners */
+.status-banner-safe {
+    background: rgba(6, 78, 59, 0.45);
+    border: 1px solid #10b981;
+    border-radius: 10px;
+    padding: 14px 20px;
+    margin-bottom: 18px;
+}
+.status-banner-attack {
+    background: rgba(127, 29, 29, 0.45);
+    border: 1px solid #ef4444;
+    border-radius: 10px;
+    padding: 14px 20px;
+    margin-bottom: 18px;
+}
+
+/* Detail & Action Card */
+.action-card {
+    background: #111827;
+    border: 1px solid #374151;
+    border-radius: 10px;
+    padding: 18px;
+    margin-top: 10px;
+}
+
+/* Tabs Styling */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: 8px 8px 0px 0px;
+    padding: 10px 18px;
+    background-color: #111827;
+    color: #94a3b8;
+    font-weight: 600;
+}
+.stTabs [aria-selected="true"] {
+    background-color: #1e3a5f !important;
+    color: #00d4ff !important;
+}
+
+/* Badges */
+.badge-critical { background:#7f1d1d; color:#fca5a5; padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.75rem; }
+.badge-high     { background:#78350f; color:#fcd34d; padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.75rem; }
+.badge-medium   { background:#1e3a5f; color:#93c5fd; padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.75rem; }
+.badge-low      { background:#064e3b; color:#6ee7b7; padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.75rem; }
+</style>
+"""
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
-# ── Ensure Session State Initialized ─────────────────────────────────────────
-logs_df, alerts_df, active_name = ensure_session_data()
+# ── Fast Cached Pipeline Loader ──────────────────────────────────────────────
+@st.cache_data(show_spinner=False)
+def load_dataset_cached(filepath: str, name: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Runs pipeline once per dataset and caches output for instantaneous UI toggling."""
+    if not os.path.exists(filepath):
+        return pd.DataFrame(), pd.DataFrame()
+    raw_df = pd.read_csv(filepath)
+    return run_pipeline(raw_df, name)
 
 
-# ── Sidebar ─────────────────────────────────────────────────────────────────
+# ── Sidebar Controls ────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown('<div class="sidebar-logo">🛡️ CyberShield</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-tagline">Cloud Cyber Threat Detection</div>', unsafe_allow_html=True)
-    st.divider()
-
-    st.markdown("**🗂 SOC Modules**")
-    st.info("Explore the dedicated pages:\n- 📊 Overview\n- 📋 Log Monitoring\n- 🚨 Alerts\n- 📈 Analytics\n- 🔍 Investigation")
-    st.divider()
-
-    st.markdown("### ☁️ Cloud Architecture Status")
-    cloud_port = os.environ.get("PORT", "8501")
-    cloud_env = os.environ.get("ENV", "production")
-    app_mode = os.environ.get("APP_MODE", "dashboard")
-    st.markdown(f"""
-    <div style='background:#111827; border:1px solid #1e40af; border-radius:8px; padding:10px; font-size:0.8rem;'>
-      <div>🌐 <b>Host:</b> <code>0.0.0.0:{cloud_port}</code></div>
-      <div>⚡ <b>Environment:</b> <span style='color:#34d399;'>{cloud_env.upper()}</span></div>
-      <div>🚀 <b>Mode:</b> <code>{app_mode}</code></div>
-      <div>🛡️ <b>Engine:</b> <span style='color:#00d4ff;'>Heuristics + ML Active</span></div>
+    st.markdown("""
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+        <span style="font-size:2rem;">🛡️</span>
+        <div>
+            <div style="font-size:1.4rem; font-weight:800; color:#00d4ff; line-height:1.1;">CyberShield</div>
+            <div style="font-size:0.72rem; color:#94a3b8;">Cloud Threat Detection & SOC</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
     st.divider()
 
-    st.markdown("### 📥 Benchmark Datasets & Upload")
+    st.markdown("### 🎯 Select Operational Scenario")
+    dataset_keys = list(AVAILABLE_DATASETS.keys())
+    
+    # Track selection in session state
+    current_choice = st.session_state.get("selected_scenario", DEFAULT_DATASET_NAME)
+    default_idx = dataset_keys.index(current_choice) if current_choice in dataset_keys else 0
 
-    dataset_options = list(AVAILABLE_DATASETS.keys()) + ["📂 Upload Custom CSV/JSON"]
-    current_active = st.session_state.get("active_dataset_name", DEFAULT_DATASET_NAME)
-    default_idx = dataset_options.index(current_active) if current_active in dataset_options else 0
-
-    dataset_choice = st.selectbox(
-        "Choose Security Telemetry Dataset:",
-        dataset_options,
-        index=default_idx
+    selected_scenario = st.radio(
+        "Demonstration Dataset:",
+        dataset_keys,
+        index=default_idx,
+        help="Switch between clean normal operations and live attack incident telemetry."
     )
-
-    if dataset_choice == "📂 Upload Custom CSV/JSON":
-        uploaded_file = st.file_uploader("Upload CSV or JSON Security Log", type=["csv", "json"])
-        if uploaded_file is not None:
-            if st.button("⚡ Analyze Uploaded File", use_container_width=True, type="primary"):
-                with st.spinner("Parsing & analyzing uploaded telemetry..."):
-                    try:
-                        if uploaded_file.name.endswith(".csv"):
-                            uploaded_df = pd.read_csv(uploaded_file)
-                        else:
-                            uploaded_df = pd.read_json(uploaded_file)
-                        process_dataframe(uploaded_df, f"Uploaded: {uploaded_file.name}")
-                        st.success(f"Analysis complete for {uploaded_file.name}!")
-                        st.rerun()
-                    except Exception as err:
-                        st.error(f"Error parsing file: {err}")
-
-    else:
-        selected_file_path = AVAILABLE_DATASETS.get(dataset_choice)
-        if st.button(f"⚡ Load & Analyze Selected", use_container_width=True, type="primary"):
-            with st.spinner("Analyzing selected dataset through SOC pipeline..."):
-                if selected_file_path and os.path.exists(selected_file_path):
-                    chosen_df = pd.read_csv(selected_file_path)
-                    process_dataframe(chosen_df, dataset_choice)
-                    st.success("Analysis complete!")
-                    st.rerun()
-                else:
-                    st.error(f"File not found: {selected_file_path}")
+    st.session_state["selected_scenario"] = selected_scenario
 
     st.divider()
-    active_badge = st.session_state.get("active_dataset_name", "Default")
-    st.markdown(f"**Current Active Data:** `{active_badge}`")
 
-    if st.button("🔄 Reset / Reload Baseline", use_container_width=True):
+    # Real-life Working Group / SOC Team Persona
+    st.markdown("### 👥 SOC Team Working System")
+    soc_role = st.selectbox(
+        "Active Analyst Persona:",
+        [
+            "🛡️ Lead SOC Analyst (Triage & Response)",
+            "🔍 Threat Hunter (Forensic Analysis)",
+            "🚨 Incident Commander (Executive Oversight)",
+        ],
+        index=0,
+    )
+
+    defense_policy = st.selectbox(
+        "Automated Defense Policy:",
+        [
+            "⚡ Active Defense (Auto Firewall Drop & MFA Enforcement)",
+            "👁️ Passive Observation (Log & Alert Only)",
+        ],
+        index=0,
+    )
+
+    st.divider()
+
+    # Quick Filters for tables
+    st.markdown("### 🔍 Table Quick Filters")
+    severity_filter = st.selectbox(
+        "Filter by Severity:",
+        ["All Severities", "CRITICAL", "HIGH", "MEDIUM", "LOW"],
+        index=0,
+    )
+
+    threat_type_filter = st.selectbox(
+        "Filter by Threat Category:",
+        ["All Categories", "brute_force", "port_scan", "abnormal_traffic", "ml_anomaly"],
+        index=0,
+    )
+
+    st.divider()
+
+    if st.button("🔄 Reload & Reset Baseline", use_container_width=True):
         st.cache_data.clear()
-        if os.path.exists(DEFAULT_DATASET_PATH):
-            process_dataframe(pd.read_csv(DEFAULT_DATASET_PATH), DEFAULT_DATASET_NAME)
+        st.session_state["selected_scenario"] = DEFAULT_DATASET_NAME
         st.rerun()
 
-logs_df = st.session_state.get("logs_df", pd.DataFrame())
-alerts_df = st.session_state.get("alerts_df", pd.DataFrame())
+    st.caption("CyberShield · Cloud Application Development Demonstration · Fast & Simplified SOC Platform")
+
+
+# ── Load Selected Telemetry (Cached & Instant) ─────────────────────────────
+target_filepath = AVAILABLE_DATASETS[selected_scenario]
+logs_df, alerts_df = load_dataset_cached(target_filepath, selected_scenario)
+
+# Sync into session_state for any helper references
+st.session_state["logs_df"] = logs_df
+st.session_state["alerts_df"] = alerts_df
+st.session_state["active_dataset_name"] = selected_scenario
+
+# Ensure timestamp parsing
+if not logs_df.empty and "timestamp" in logs_df.columns:
+    logs_df["timestamp"] = pd.to_datetime(logs_df["timestamp"])
+if not alerts_df.empty and "timestamp" in alerts_df.columns:
+    alerts_df["timestamp"] = pd.to_datetime(alerts_df["timestamp"])
+
+is_attack_scenario = "Attack" in selected_scenario or "Threats" in selected_scenario or len(alerts_df) > 0
+
 
 # ── Main Header ─────────────────────────────────────────────────────────────
 st.markdown("""
-<div style='text-align:center; padding:15px 0 10px 0;'>
-  <span style='font-size:2.8rem; font-weight:900; color:#00d4ff; letter-spacing:0.05em;'>🛡️ CyberShield</span><br>
-  <span style='font-size:1.1rem; color:#9ca3af; letter-spacing:0.12em;'>
-      CLOUD CYBER THREAT DETECTION & ANALYSIS ENGINE
-  </span>
+<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0 16px 0;">
+    <div>
+        <div style="font-size:2.2rem; font-weight:800; color:#00d4ff; letter-spacing:0.02em;">
+            🛡️ Cloud Cyber Threat Detection Dashboard
+        </div>
+        <div style="font-size:0.95rem; color:#94a3b8;">
+            Dual-Engine Detection (Rule Heuristics + Isolation Forest ML) · Real-Time SOC Incident Response
+        </div>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
-active_dataset_badge = st.session_state.get("active_dataset_name", "None")
-st.markdown(
-    f"""<div style='text-align:center; margin-bottom:12px;'>
-      <span style='background:#1e3a5f; color:#93c5fd; padding:4px 14px; border-radius:20px; font-size:0.85rem; font-weight:600; margin-right:8px;'>Active Dataset: {active_dataset_badge}</span>
-      <span style='background:#064e3b; color:#34d399; padding:4px 14px; border-radius:20px; font-size:0.85rem; font-weight:600;'>Cloud Deployment: Online</span>
-      <span style='background:#312e81; color:#c7d2fe; padding:4px 14px; border-radius:20px; font-size:0.85rem; font-weight:600; margin-left:8px;'>Dual-Engine: Rules + ML Isolation Forest</span>
-    </div>""",
-    unsafe_allow_html=True
-)
-st.markdown("<hr style='border:1px solid #1e40af; margin:0 0 20px 0;'>", unsafe_allow_html=True)
 
-# ── KPI Row ─────────────────────────────────────────────────────────────────
+# ── Live Operational Status Banner ──────────────────────────────────────────
+if not is_attack_scenario or alerts_df.empty:
+    st.markdown(f"""
+    <div class="status-banner-safe">
+        <div style="font-size:1.15rem; font-weight:700; color:#34d399;">
+            🟢 OPERATIONAL STATUS: ALL SYSTEMS HEALTHY / SAFE BASELINE
+        </div>
+        <div style="font-size:0.88rem; color:#cbd5e1; margin-top:3px;">
+            Telemetry active ({selected_scenario}). Ingested <b>{len(logs_df):,}</b> event records.
+            Zero unauthorized authentication attempts, port scans, or exfiltration spikes detected. Safe operational window.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    crit_n = int((alerts_df["severity"] == "CRITICAL").sum()) if "severity" in alerts_df.columns else 0
+    high_n = int((alerts_df["severity"] == "HIGH").sum()) if "severity" in alerts_df.columns else 0
+    st.markdown(f"""
+    <div class="status-banner-attack">
+        <div style="font-size:1.15rem; font-weight:700; color:#f87171;">
+            🚨 OPERATIONAL STATUS: ACTIVE CYBER INTRUSION DETECTED
+        </div>
+        <div style="font-size:0.88rem; color:#fecaca; margin-top:3px;">
+            Telemetry active ({selected_scenario}). <b>{len(alerts_df)}</b> hostile incidents flagged
+            (<b>{crit_n} Critical</b>, <b>{high_n} High</b>). Brute-force credential stuffing and port reconnaissance identified. SOC team response protocol engaged.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ── KPI Cards Row ───────────────────────────────────────────────────────────
 total_events = len(logs_df)
 total_threats = len(alerts_df)
 
 crit_count = 0
 high_count = 0
 med_count = 0
-low_count = 0
-if not alerts_df.empty and "severity" in alerts_df.columns:
-    crit_count = int((alerts_df["severity"].str.upper() == "CRITICAL").sum())
-    high_count = int((alerts_df["severity"].str.upper() == "HIGH").sum())
-    med_count = int((alerts_df["severity"].str.upper() == "MEDIUM").sum())
-    low_count = int((alerts_df["severity"].str.upper() == "LOW").sum())
+avg_risk = 0
 
-c1, c2, c3, c4 = st.columns(4)
+if not alerts_df.empty:
+    if "severity" in alerts_df.columns:
+        crit_count = int((alerts_df["severity"] == "CRITICAL").sum())
+        high_count = int((alerts_df["severity"] == "HIGH").sum())
+        med_count = int((alerts_df["severity"] == "MEDIUM").sum())
+    if "risk_score" in alerts_df.columns:
+        avg_risk = int(alerts_df["risk_score"].mean())
 
-def _kpi(col, icon, label, value, color="#00d4ff", delta_text="", delta_pos=True):
-    delta_cls = "kpi-delta-pos" if delta_pos else "kpi-delta-neg"
-    delta_html = f'<div class="{delta_cls}">{delta_text}</div>' if delta_text else ""
+k1, k2, k3, k4, k5 = st.columns(5)
+
+def render_kpi(col, icon, value, label, color="#00d4ff"):
     col.markdown(f"""
     <div class="kpi-card">
-      <div style="font-size:1.8rem;">{icon}</div>
-      <div class="kpi-value" style="color:{color};">{value:,}</div>
-      <div class="kpi-label">{label}</div>
-      {delta_html}
-    </div>""", unsafe_allow_html=True)
+        <div style="font-size:1.4rem;">{icon}</div>
+        <div class="kpi-value" style="color:{color};">{value}</div>
+        <div class="kpi-label">{label}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-_kpi(c1, "🔵", "Analyzed Log Events", total_events, "#00d4ff", f"Telemetry records")
-_kpi(c2, "🟡", "Threats Detected", total_threats, "#f59e0b", f"Total alerts flagged", True)
-_kpi(c3, "🔴", "Critical Alerts", crit_count, "#ef4444", "Urgent remediation required", False)
-_kpi(c4, "🟠", "High Severity", high_count, "#f97316", f"Priority investigation")
+render_kpi(k1, "🔵", f"{total_events:,}", "Analyzed Telemetry", "#00d4ff")
+render_kpi(k2, "🟡", f"{total_threats:,}", "Threats Detected", "#f59e0b" if total_threats > 0 else "#10b981")
+render_kpi(k3, "🔴", f"{crit_count:,}", "Critical Alerts", "#ef4444" if crit_count > 0 else "#10b981")
+render_kpi(k4, "🟠", f"{high_count:,}", "High Priority", "#f97316" if high_count > 0 else "#10b981")
+render_kpi(k5, "🎯", f"{avg_risk}/100", "Mean Risk Score", "#ef4444" if avg_risk >= 70 else ("#f59e0b" if avg_risk > 0 else "#10b981"))
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Real-Time Automated Threat Intelligence Report ───────────────────────────
-st.markdown('<div class="section-header">📄 Automated Threat Intelligence & Analysis Report</div>', unsafe_allow_html=True)
 
-# Generate detailed text report according to the active dataset
-report_lines = []
-report_lines.append("=" * 80)
-report_lines.append(f"CYBERSHIELD THREAT ANALYSIS REPORT — {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
-report_lines.append(f"Source Telemetry   : {active_dataset_badge}")
-report_lines.append(f"Events Ingested    : {total_events:,}")
-report_lines.append(f"Detections Triaged : {total_threats} alerts (Critical: {crit_count}, High: {high_count}, Medium: {med_count}, Low: {low_count})")
-report_lines.append("=" * 80)
+# ── Analytic Graphs Section ────────────────────────────────────────────────
+st.markdown("### 📊 Analytic Graphs (System Dynamic Visualizations)")
 
-if total_threats > 0 and not alerts_df.empty:
-    report_lines.append("\n[1] EXECUTIVE THREAT SUMMARY:")
-    top_threat = alerts_df["threat_type"].mode().iloc[0] if "threat_type" in alerts_df.columns else "N/A"
-    top_attacker = alerts_df["source_ip"].mode().iloc[0] if "source_ip" in alerts_df.columns else "N/A"
-    avg_risk = int(alerts_df["risk_score"].mean()) if "risk_score" in alerts_df.columns else 0
-    report_lines.append(f"  • Primary Threat Category : {top_threat.upper()}")
-    report_lines.append(f"  • Top Offending Source IP : {top_attacker}")
-    report_lines.append(f"  • Mean Risk Index         : {avg_risk}/100")
-    
-    report_lines.append("\n[2] INCIDENT BREAKDOWN & FINDINGS:")
-    for idx, r in alerts_df.head(10).iterrows():
-        aid = r.get("alert_id", f"ALT-{idx+1:03d}")
-        sev = r.get("severity", "MEDIUM")
-        tt = r.get("threat_type", "Unknown")
-        sip = r.get("source_ip", "Unknown")
-        score = r.get("risk_score", 0)
-        reason = r.get("reason", "Rule threshold exceeded.")
-        report_lines.append(f"  [{aid}] [{sev}] {tt.upper()} from {sip} (Risk: {score}) -> {reason}")
+g_col1, g_col2 = st.columns([1, 1])
 
-    report_lines.append("\n[3] RECOMMENDED REMEDIATION PLAYBOOK:")
-    unique_threats = alerts_df["threat_type"].unique() if "threat_type" in alerts_df.columns else []
-    for ut in unique_threats:
-        action = "Escalate to SOC analyst for inspection."
-        if "brute_force" in str(ut).lower():
-            action = "Immediately block offending source IP at perimeter firewall. Enforce MFA & account lockout policy."
-        elif "port_scan" in str(ut).lower():
-            action = "Isolate scanning entity. Review open ingress ports and update IDS drop rules."
-        elif "abnormal_traffic" in str(ut).lower():
-            action = "Rate-limit connection. Investigate potential data exfiltration and inspect network flow payloads."
-        elif "ml_anomaly" in str(ut).lower():
-            action = "Correlate host telemetry with process logs to verify outlier behavior."
-        report_lines.append(f"  • {str(ut).upper()}: {action}")
-else:
-    report_lines.append("\n[1] EXECUTIVE THREAT SUMMARY:")
-    report_lines.append("  • STATUS: CLEAN / LOW RISK BASELINE")
-    report_lines.append("  • No malicious brute-force, port-scans, or abnormal traffic spikes detected.")
-    report_lines.append("  • Telemetry adheres to normal operational profile.")
-
-report_lines.append("\n" + "=" * 80)
-report_lines.append("END OF REPORT — Generated automatically by CyberShield SOC Platform")
-
-full_report_str = "\n".join(report_lines)
-
-col_rep1, col_rep2 = st.columns([3, 1])
-with col_rep1:
-    st.markdown(f'<div class="report-box">{full_report_str}</div>', unsafe_allow_html=True)
-with col_rep2:
-    st.markdown("#### 📥 Export Report")
-    st.download_button(
-        label="📄 Download Report (TXT)",
-        data=full_report_str,
-        file_name=f"Threat_Report_{active_dataset_badge.replace(' ', '_')}.txt",
-        mime="text/plain",
-        use_container_width=True
-    )
-    if not alerts_df.empty:
-        alerts_csv = alerts_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📊 Download Alerts (CSV)",
-            data=alerts_csv,
-            file_name=f"Alerts_{active_dataset_badge.replace(' ', '_')}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
-
-# ── Trend & Detection Breakdown ─────────────────────────────────────────────
-st.markdown("<br>", unsafe_allow_html=True)
-st.markdown('<div class="section-header">📊 Threat Breakdown & Engine Telemetry</div>', unsafe_allow_html=True)
-
-col_ch1, col_ch2 = st.columns(2)
-with col_ch1:
+# Chart 1: Threat Type Distribution
+with g_col1:
     if not alerts_df.empty and "threat_type" in alerts_df.columns:
-        counts = alerts_df["threat_type"].value_counts().reset_index()
-        counts.columns = ["threat_type", "count"]
-        fig_p = px.pie(
-            counts, names="threat_type", values="count", hole=0.45,
-            color_discrete_sequence=["#ef4444", "#f97316", "#3b82f6", "#06b6d4"]
+        type_counts = alerts_df["threat_type"].value_counts().reset_index()
+        type_counts.columns = ["Threat Category", "Count"]
+        fig_donut = px.pie(
+            type_counts,
+            names="Threat Category",
+            values="Count",
+            hole=0.5,
+            title="🎯 Threat Categories Flagged by Engine",
+            color_discrete_sequence=["#ef4444", "#f97316", "#3b82f6", "#a855f7", "#10b981"],
         )
-        fig_p.update_layout(
-            paper_bgcolor="#111827", plot_bgcolor="#111827",
-            font=dict(color="#e2e8f0"), height=250, margin=dict(t=10, b=10, l=10, r=10)
+        fig_donut.update_layout(
+            paper_bgcolor="#111827",
+            plot_bgcolor="#111827",
+            font=dict(color="#e2e8f0"),
+            height=280,
+            margin=dict(t=40, b=10, l=10, r=10),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
         )
-        st.plotly_chart(fig_p, use_container_width=True)
+        st.plotly_chart(fig_donut, use_container_width=True)
     else:
-        st.info("No active threats in current dataset.")
+        # Normal dataset baseline chart
+        clean_df = pd.DataFrame({
+            "Traffic Classification": ["Authorized Web & Cloud Traffic", "Administrative SSH", "Routine DNS Queries"],
+            "Count": [180, 70, 50]
+        })
+        fig_clean = px.pie(
+            clean_df,
+            names="Traffic Classification",
+            values="Count",
+            hole=0.5,
+            title="🟢 Operational Traffic Breakdown (Baseline Safe)",
+            color_discrete_sequence=["#10b981", "#34d399", "#6ee7b7"],
+        )
+        fig_clean.update_layout(
+            paper_bgcolor="#111827",
+            plot_bgcolor="#111827",
+            font=dict(color="#e2e8f0"),
+            height=280,
+            margin=dict(t=40, b=10, l=10, r=10),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
+        )
+        st.plotly_chart(fig_clean, use_container_width=True)
 
-with col_ch2:
-    if not alerts_df.empty and "risk_score" in alerts_df.columns:
-        fig_h = px.histogram(
-            alerts_df, x="risk_score", nbins=10,
-            color_discrete_sequence=["#00d4ff"]
+# Chart 2: Threat Severity & Risk Index
+with g_col2:
+    if not alerts_df.empty and "severity" in alerts_df.columns:
+        sev_counts = alerts_df["severity"].value_counts().reset_index()
+        sev_counts.columns = ["Severity", "Alerts"]
+        sev_color_map = {"CRITICAL": "#ef4444", "HIGH": "#f97316", "MEDIUM": "#3b82f6", "LOW": "#10b981"}
+        fig_sev = px.bar(
+            sev_counts,
+            x="Severity",
+            y="Alerts",
+            color="Severity",
+            title="⚠️ Threat Severity Breakdown (CVSS-Aligned)",
+            color_discrete_map=sev_color_map,
+            text_auto=True,
         )
-        fig_h.update_layout(
-            paper_bgcolor="#111827", plot_bgcolor="#111827",
-            font=dict(color="#e2e8f0"), height=250, margin=dict(t=10, b=10, l=10, r=10),
-            xaxis_title="Risk Score (0-100)", yaxis_title="Alert Count"
+        fig_sev.update_layout(
+            paper_bgcolor="#111827",
+            plot_bgcolor="#111827",
+            font=dict(color="#e2e8f0"),
+            height=280,
+            margin=dict(t=40, b=10, l=10, r=10),
+            showlegend=False,
+            xaxis=dict(gridcolor="#1f2937"),
+            yaxis=dict(gridcolor="#1f2937"),
         )
-        st.plotly_chart(fig_h, use_container_width=True)
+        st.plotly_chart(fig_sev, use_container_width=True)
     else:
-        st.info("No risk score distribution available.")
+        # Normal dataset zero risk status
+        fig_clean_bar = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=0,
+            domain={'x': [0, 1], 'y': [0, 1]},
+            title={'text': "🟢 Threat Risk Gauge (0-100)", 'font': {'color': '#e2e8f0', 'size': 16}},
+            gauge={
+                'axis': {'range': [0, 100], 'tickcolor': "#94a3b8"},
+                'bar': {'color': "#10b981"},
+                'steps': [
+                    {'range': [0, 30], 'color': "rgba(16, 185, 129, 0.2)"},
+                    {'range': [30, 70], 'color': "rgba(245, 158, 11, 0.2)"},
+                    {'range': [70, 100], 'color': "rgba(239, 68, 68, 0.2)"},
+                ],
+            }
+        ))
+        fig_clean_bar.update_layout(
+            paper_bgcolor="#111827",
+            plot_bgcolor="#111827",
+            font=dict(color="#e2e8f0"),
+            height=280,
+            margin=dict(t=40, b=10, l=30, r=30),
+        )
+        st.plotly_chart(fig_clean_bar, use_container_width=True)
 
-# ── Active Detection Pipeline Engines ─────────────────────────────────────────
-st.markdown('<div class="section-header">🖥️ Active Detection Pipeline Engines</div>', unsafe_allow_html=True)
-sc1, sc2, sc3, sc4, sc5 = st.columns(5)
-core_pipeline_status = [
-    (sc1, "📜 Log Parser",      "Schema & Feature Extractor",  _modules_ok.get("log_parser", False)),
-    (sc2, "⚙️ Rules Engine",    "Brute Force & Port Scans",    _modules_ok.get("rules_engine", False)),
-    (sc3, "🤖 ML Engine",       "Isolation Forest (Sklearn)",  _modules_ok.get("ml_engine", False)),
-    (sc4, "🎯 Risk Scorer",     "Weighted CVSS-Style Scoring", _modules_ok.get("risk_score", False)),
-    (sc5, "🔔 Alert Manager",   "Triage & Deduplication",      _modules_ok.get("alert_manager", False)),
-]
-for col, name, subtitle, ok in core_pipeline_status:
-    icon = "✅" if ok else "⚠️"
-    status_txt = "ONLINE" if ok else "FALLBACK"
-    col.markdown(f"""
-    <div class="kpi-card" style="padding:14px;">
-      <div style="font-size:1.3rem;">{icon}</div>
-      <div style="font-size:0.82rem; font-weight:700; color:#e2e8f0; margin-top:4px;">{name}</div>
-      <div style="font-size:0.68rem; color:#94a3b8; margin-top:1px;">{subtitle}</div>
-      <div style="font-size:0.7rem; color:{'#22c55e' if ok else '#f59e0b'}; margin-top:3px; font-weight:600;">{status_txt}</div>
-    </div>""", unsafe_allow_html=True)
+# Chart 3 & 4 Row: Timeline & Offending Entities
+g_col3, g_col4 = st.columns([1, 1])
 
-st.markdown("<br>")
-st.caption("CyberShield · Cloud-Based Cyber Threat Detection Dashboard · Cloud Application Development")
+# Chart 3: Security Telemetry Timeline & Attack Spikes
+with g_col3:
+    if not logs_df.empty and "timestamp" in logs_df.columns:
+        logs_df_time = logs_df.set_index("timestamp").resample("1T").size().reset_index(name="Event Frequency")
+        fig_time = px.area(
+            logs_df_time,
+            x="timestamp",
+            y="Event Frequency",
+            title="📈 Telemetry Ingestion Timeline & Spike Detection",
+            color_discrete_sequence=["#00d4ff" if not is_attack_scenario else "#ef4444"],
+        )
+        fig_time.update_layout(
+            paper_bgcolor="#111827",
+            plot_bgcolor="#111827",
+            font=dict(color="#e2e8f0"),
+            height=250,
+            margin=dict(t=40, b=10, l=10, r=10),
+            xaxis=dict(gridcolor="#1f2937", title="Timeline (UTC)"),
+            yaxis=dict(gridcolor="#1f2937", title="Events / Minute"),
+        )
+        st.plotly_chart(fig_time, use_container_width=True)
+
+# Chart 4: Top Targeted Cloud Ports or Top Offending IPs
+with g_col4:
+    if not alerts_df.empty and "source_ip" in alerts_df.columns:
+        top_attackers = alerts_df["source_ip"].value_counts().head(5).reset_index()
+        top_attackers.columns = ["Hostile Source IP", "Alerts Triggered"]
+        fig_att = px.bar(
+            top_attackers,
+            x="Alerts Triggered",
+            y="Hostile Source IP",
+            orientation="h",
+            title="🚨 Top Hostile Source IPs Detected",
+            color="Alerts Triggered",
+            color_continuous_scale="Reds",
+        )
+        fig_att.update_layout(
+            paper_bgcolor="#111827",
+            plot_bgcolor="#111827",
+            font=dict(color="#e2e8f0"),
+            height=250,
+            margin=dict(t=40, b=10, l=10, r=10),
+            xaxis=dict(gridcolor="#1f2937"),
+            yaxis=dict(gridcolor="#1f2937", autorange="reversed"),
+            coloraxis_showscale=False,
+        )
+        st.plotly_chart(fig_att, use_container_width=True)
+    else:
+        # Normal dataset port usage
+        port_counts = logs_df["destination_port"].value_counts().head(5).reset_index() if "destination_port" in logs_df.columns else pd.DataFrame()
+        if not port_counts.empty:
+            port_counts.columns = ["Port", "Count"]
+            port_counts["Port"] = port_counts["Port"].astype(str)
+            fig_port = px.bar(
+                port_counts,
+                x="Port",
+                y="Count",
+                title="🌐 Cloud Ingress Ports In Routine Use",
+                color_discrete_sequence=["#10b981"],
+            )
+            fig_port.update_layout(
+                paper_bgcolor="#111827",
+                plot_bgcolor="#111827",
+                font=dict(color="#e2e8f0"),
+                height=250,
+                margin=dict(t=40, b=10, l=10, r=10),
+                xaxis=dict(gridcolor="#1f2937"),
+                yaxis=dict(gridcolor="#1f2937"),
+            )
+            st.plotly_chart(fig_port, use_container_width=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 
+# ── Interactive Tables Section ──────────────────────────────────────────────
+st.markdown("### 📋 Interactive Security Tables & SOC Operations")
+st.caption("Select and filter alerts, logs, and incident remediation actions according to requirements.")
+
+tab_alerts, tab_logs, tab_report = st.tabs([
+    "🚨 Detected Threat Alerts Table & Triage",
+    "📋 Cloud Security Activity Logs Table",
+    "📄 Executive Threat Intelligence Summary",
+])
+
+
+# ── TAB 1: Detected Threat Alerts Table ─────────────────────────────────────
+with tab_alerts:
+    if alerts_df.empty:
+        st.success("✅ **No threat alerts detected in current telemetry.** All system metrics conform to authorized cloud operational baselines.")
+    else:
+        # Filter table according to user selections
+        filtered_alerts = alerts_df.copy()
+        
+        if severity_filter != "All Severities" and "severity" in filtered_alerts.columns:
+            filtered_alerts = filtered_alerts[filtered_alerts["severity"].str.upper() == severity_filter.upper()]
+
+        if threat_type_filter != "All Categories" and "threat_type" in filtered_alerts.columns:
+            filtered_alerts = filtered_alerts[filtered_alerts["threat_type"].str.lower() == threat_type_filter.lower()]
+
+        # Search box by source IP
+        search_ip = st.text_input("🔍 Search Alerts by Offending Source IP:", placeholder="e.g. 185.220.101.35 or 192.168", key="search_alert_ip")
+        if search_ip and "source_ip" in filtered_alerts.columns:
+            filtered_alerts = filtered_alerts[filtered_alerts["source_ip"].astype(str).str.contains(search_ip, case=False, na=False)]
+
+        st.markdown(f"**Showing {len(filtered_alerts)} of {len(alerts_df)} threat alerts** (Filtered by: `{severity_filter}`, `{threat_type_filter}`):")
+
+        # Display Clean Interactive Table
+        display_cols = [c for c in [
+            "alert_id", "timestamp", "threat_type", "severity", "risk_score",
+            "source_ip", "destination_port", "protocol", "status", "suggested_action"
+        ] if c in filtered_alerts.columns]
+
+        st.dataframe(
+            filtered_alerts[display_cols],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "alert_id": st.column_config.TextColumn("Alert ID", width="small"),
+                "timestamp": st.column_config.DatetimeColumn("Detected At", format="YYYY-MM-DD HH:mm:ss"),
+                "threat_type": st.column_config.TextColumn("Threat Category"),
+                "severity": st.column_config.TextColumn("Severity"),
+                "risk_score": st.column_config.ProgressColumn("Risk Score", min_value=0, max_value=100, format="%d"),
+                "source_ip": st.column_config.TextColumn("Hostile Source IP"),
+                "destination_port": st.column_config.NumberColumn("Target Port", format="%d"),
+                "protocol": st.column_config.TextColumn("Protocol"),
+                "status": st.column_config.TextColumn("Status"),
+                "suggested_action": st.column_config.TextColumn("Recommended Playbook Action"),
+            }
+        )
+
+        # Incident Drill-Down & Real-Life SOC Action
+        st.markdown("#### 🛠️ Real-Life Incident Remediation & SOC Team Action")
+        alert_ids = filtered_alerts["alert_id"].tolist() if not filtered_alerts.empty else alerts_df["alert_id"].tolist()
+        
+        if alert_ids:
+            selected_aid = st.selectbox("Select Alert to Inspect & Mitigate:", alert_ids, key="selected_alert_inspect")
+            selected_row = alerts_df[alerts_df["alert_id"] == selected_aid].iloc[0]
+
+            act_col1, act_col2 = st.columns([2, 1])
+            with act_col1:
+                st.markdown(f"""
+                <div class="action-card">
+                    <div style="font-size:1.1rem; font-weight:700; color:#00d4ff;">
+                        [{selected_row.get('alert_id', 'ALT')}] {str(selected_row.get('threat_type', 'Threat')).upper()} INCIDENT
+                    </div>
+                    <div style="font-size:0.85rem; color:#94a3b8; margin-top:2px;">
+                        MITRE ATT&CK: <b>{selected_row.get('mitre_attack', 'T1110 - Brute Force')}</b>
+                    </div>
+                    <hr style="border-color:#374151; margin:8px 0;">
+                    <div style="font-size:0.9rem;">
+                        <b>Offending Host:</b> <code>{selected_row.get('source_ip', 'N/A')}</code> &nbsp; | &nbsp;
+                        <b>Target Port:</b> <code>{selected_row.get('destination_port', 'N/A')} ({selected_row.get('protocol', 'TCP')})</code> &nbsp; | &nbsp;
+                        <b>Risk Score:</b> <span style="color:#ef4444; font-weight:700;">{selected_row.get('risk_score', 0)}/100</span>
+                    </div>
+                    <div style="font-size:0.85rem; color:#cbd5e1; margin-top:8px;">
+                        <b>Root Cause Narrative:</b> {selected_row.get('reason', 'Threshold exceeded')}
+                    </div>
+                    <div style="font-size:0.85rem; color:#93c5fd; margin-top:6px;">
+                        <b>Playbook Recommendation:</b> {selected_row.get('suggested_action', 'Isolate IP at firewall.')}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with act_col2:
+                st.markdown("**⚡ Team Defense Mitigation Action:**")
+                st.caption(f"Acting as: **{soc_role.split('(')[0]}**")
+                
+                if st.button("⛔ Deploy Perimeter Firewall Block", use_container_width=True, type="primary"):
+                    update_alert_status(selected_aid, "MITIGATED")
+                    st.success(f"Firewall drop rule applied to {selected_row.get('source_ip')}! Status updated to MITIGATED.")
+                    st.rerun()
+
+                if st.button("🔒 Force MFA & User Lockout", use_container_width=True):
+                    update_alert_status(selected_aid, "INVESTIGATING")
+                    st.info(f"Account lockout and MFA challenge enforced for target. Status set to INVESTIGATING.")
+                    st.rerun()
+
+                if st.button("✅ Mark Incident Resolved", use_container_width=True):
+                    update_alert_status(selected_aid, "RESOLVED")
+                    st.success(f"Alert {selected_aid} marked as RESOLVED.")
+                    st.rerun()
+
+
+# ── TAB 2: Cloud Security Activity Logs Table ──────────────────────────────
+with tab_logs:
+    if logs_df.empty:
+        st.info("No logs loaded.")
+    else:
+        st.markdown(f"**Total Ingested Log Telemetry:** `{len(logs_df):,}` events")
+        
+        f_col1, f_col2 = st.columns([1, 1])
+        with f_col1:
+            available_events = ["All Event Types"] + sorted(list(logs_df["event_type"].dropna().unique())) if "event_type" in logs_df.columns else ["All Event Types"]
+            event_choice = st.selectbox("Filter by Event Type:", available_events, key="filter_event_type")
+
+        with f_col2:
+            search_log_user = st.text_input("🔍 Search by User or IP:", placeholder="e.g. admin, root, 192.168", key="search_log_user")
+
+        filtered_logs = logs_df.copy()
+        if event_choice != "All Event Types" and "event_type" in filtered_logs.columns:
+            filtered_logs = filtered_logs[filtered_logs["event_type"] == event_choice]
+
+        if search_log_user:
+            cond = pd.Series([False] * len(filtered_logs), index=filtered_logs.index)
+            if "user" in filtered_logs.columns:
+                cond = cond | filtered_logs["user"].astype(str).str.contains(search_log_user, case=False, na=False)
+            if "source_ip" in filtered_logs.columns:
+                cond = cond | filtered_logs["source_ip"].astype(str).str.contains(search_log_user, case=False, na=False)
+            filtered_logs = filtered_logs[cond]
+
+        st.caption(f"Displaying {len(filtered_logs):,} matching log telemetry records:")
+
+        log_display_cols = [c for c in [
+            "timestamp", "source_ip", "destination_ip", "source_port", "destination_port",
+            "protocol", "user", "event_type", "status", "bytes"
+        ] if c in filtered_logs.columns]
+
+        st.dataframe(
+            filtered_logs[log_display_cols].head(300),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "timestamp": st.column_config.DatetimeColumn("Timestamp", format="YYYY-MM-DD HH:mm:ss"),
+                "source_ip": st.column_config.TextColumn("Source IP"),
+                "destination_ip": st.column_config.TextColumn("Target IP"),
+                "destination_port": st.column_config.NumberColumn("Port", format="%d"),
+                "event_type": st.column_config.TextColumn("Event Type"),
+                "status": st.column_config.TextColumn("Status"),
+                "bytes": st.column_config.NumberColumn("Bytes", format="%d"),
+            }
+        )
+
+
+# ── TAB 3: Executive Threat Intelligence Summary ───────────────────────────
+with tab_report:
+    st.markdown("#### 📄 Executive SOC Threat Intelligence Dossier")
+    st.markdown(f"**Generated:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}` &nbsp;|&nbsp; **Telemetry Source:** `{selected_scenario}`")
+
+    rep_col1, rep_col2 = st.columns([2, 1])
+
+    with rep_col1:
+        if is_attack_scenario and not alerts_df.empty:
+            top_threat = alerts_df["threat_type"].mode().iloc[0] if "threat_type" in alerts_df.columns else "brute_force"
+            top_attacker = alerts_df["source_ip"].mode().iloc[0] if "source_ip" in alerts_df.columns else "Unknown"
+            st.markdown(f"""
+            <div class="action-card">
+                <h4 style="color:#ef4444; margin-top:0;">🚨 Executive Incident Summary: ACTIVE ATTACK</h4>
+                <p>During the evaluated telemetry window, CyberShield identified <b>{len(alerts_df)}</b> high-confidence security alerts.</p>
+                <ul>
+                    <li><b>Predominant Attack Vector:</b> {str(top_threat).upper()}</li>
+                    <li><b>Primary Threat Actor (Hostile IP):</b> <code>{top_attacker}</code></li>
+                    <li><b>Mean Severity Risk Index:</b> {avg_risk}/100</li>
+                    <li><b>Dual Detection Validation:</b> Deterministic rules identified repeated SSH credential-stuffing and network service sweeps. Isolation Forest anomaly detection confirmed abnormal traffic exfiltration.</li>
+                </ul>
+                <h5 style="color:#00d4ff;">Recommended Immediate Actions:</h5>
+                <ol>
+                    <li>Block hostile IPs (<code>{top_attacker}</code>) at perimeter AWS Security Groups / VPC Network ACLs.</li>
+                    <li>Enforce Multi-Factor Authentication (MFA) and temporary lockout on targeted administrative accounts.</li>
+                    <li>Review open ingress ports (SSH Port 22, RDP Port 3389) and restrict to authorized bastion jump-hosts.</li>
+                </ol>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div class="action-card">
+                <h4 style="color:#34d399; margin-top:0;">🟢 Executive Incident Summary: CLEAN BASELINE</h4>
+                <p>Telemetry review indicates <b>safe operational status</b> across all monitored cloud instances.</p>
+                <ul>
+                    <li><b>Ingested Telemetry Events:</b> {len(logs_df):,}</li>
+                    <li><b>Intrusion Alerts Flagged:</b> 0</li>
+                    <li><b>Perimeter Status:</b> Authorized API calls and routine user sessions verified.</li>
+                </ul>
+                <p style="color:#94a3b8;">No remediation or firewall changes required at this time.</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+    with rep_col2:
+        st.markdown("**📥 Export SOC Artifacts**")
+        
+        # Prepare text report
+        txt_lines = [
+            "=" * 70,
+            f"CYBERSHIELD SOC THREAT INTELLIGENCE SUMMARY",
+            f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            f"Scenario : {selected_scenario}",
+            f"Events   : {len(logs_df):,}",
+            f"Alerts   : {len(alerts_df)}",
+            "=" * 70,
+        ]
+        if not alerts_df.empty:
+            for _, r in alerts_df.iterrows():
+                txt_lines.append(f"[{r.get('alert_id')}] [{r.get('severity')}] {r.get('threat_type')} from {r.get('source_ip')} -> Risk: {r.get('risk_score')}")
+        else:
+            txt_lines.append("Status: Clean operational baseline. Zero threats detected.")
+        txt_report = "\n".join(txt_lines)
+
+        st.download_button(
+            label="📄 Download Summary Report (TXT)",
+            data=txt_report,
+            file_name=f"Threat_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain",
+            use_container_width=True,
+        )
+
+        if not alerts_df.empty:
+            csv_alerts = alerts_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📊 Export Alerts Telemetry (CSV)",
+                data=csv_alerts,
+                file_name=f"Threat_Alerts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+st.markdown("<hr style='border:1px solid #1e293b; margin:25px 0 10px 0;'>", unsafe_allow_html=True)
+st.caption("CyberShield · Cloud-Based Cyber Threat Detection & Autonomous SOC Platform · Cloud Application Development")

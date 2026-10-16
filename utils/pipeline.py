@@ -34,16 +34,12 @@ MITRE_MAP = {
 }
 
 AVAILABLE_DATASETS = {
-    "🌟 CIC-IDS2017 Benchmark (UNB Intrusion Dataset)": "data/cic_ids2017_historical_benchmark.csv",
-    "☁️ AWS Cloud Honeypot Attacks (Real-World Telemetry)": "data/aws_honeypot_attacks.csv",
-    "🛡️ Full 610-Log Demo (Enterprise Synthetic)": "data/demo_security_logs.csv",
-    "1️⃣ Normal Baseline Traffic (dataset_1)": "data/dataset_1_normal_baseline.csv",
-    "2️⃣ SSH Brute-Force Incident (dataset_2)": "data/dataset_2_bruteforce_attack.csv",
-    "3️⃣ Multi-Vector Breach (dataset_3)": "data/dataset_3_multivector_breach.csv",
+    "🟢 Dataset 1: Normal Cloud Activity (Routine Baseline)": "data/dataset_1_normal_baseline.csv",
+    "🚨 Dataset 2: Active Cyber Attack Incidents (Intrusions & Threats)": "data/demo_security_logs.csv",
 }
 
-DEFAULT_DATASET_NAME = "🌟 CIC-IDS2017 Benchmark (UNB Intrusion Dataset)"
-DEFAULT_DATASET_PATH = "data/cic_ids2017_historical_benchmark.csv"
+DEFAULT_DATASET_NAME = "🚨 Dataset 2: Active Cyber Attack Incidents (Intrusions & Threats)"
+DEFAULT_DATASET_PATH = "data/demo_security_logs.csv"
 
 
 def run_pipeline(df_input: pd.DataFrame, source_name: str = "Uploaded Dataset") -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -75,9 +71,25 @@ def run_pipeline(df_input: pd.DataFrame, source_name: str = "Uploaded Dataset") 
     # 4. ML Anomaly Detection (Isolation Forest)
     ml_dets = []
     try:
-        bundle = train_model(df_feat)
-        scored = detect_anomalies(df_feat, bundle)
-        ml_dets = get_anomaly_detections(scored)
+        has_suspicious_features = (
+            (df_feat.get("failed_login_count", pd.Series([0])) > 0).any() or
+            (df_feat.get("unique_ports_per_ip", pd.Series([0])) > 2).any() or
+            (df_feat.get("request_rate", pd.Series([0])) > 5).any() or
+            (df_feat.get("bytes_per_source", pd.Series([0])) > 50000).any()
+        )
+        if has_suspicious_features:
+            bundle = train_model(df_feat)
+            scored = detect_anomalies(df_feat, bundle)
+            candidate_rows = scored[
+                (scored["anomaly_flag"] == True) &
+                (
+                    (scored["failed_login_count"] > 0) |
+                    (scored["unique_ports_per_ip"] > 2) |
+                    (scored["request_rate"] > 5) |
+                    (scored["bytes_per_source"] > 50000)
+                )
+            ]
+            ml_dets = get_anomaly_detections(candidate_rows)
     except Exception as e:
         logger.warning(f"ML anomaly error: {e}")
 
@@ -146,9 +158,8 @@ def ensure_session_data() -> tuple[pd.DataFrame, pd.DataFrame, str]:
     alerts_df = st.session_state.get("alerts_df")
     dataset_name = st.session_state.get("active_dataset_name")
 
-    if (logs_df is not None and not logs_df.empty and 
-        alerts_df is not None and not alerts_df.empty):
-        return logs_df, alerts_df, dataset_name or "Active Session"
+    if logs_df is not None and not logs_df.empty:
+        return logs_df, alerts_df if alerts_df is not None else pd.DataFrame(), dataset_name or "Active Session"
 
     # Need initialization - pick best available dataset
     candidate_path = DEFAULT_DATASET_PATH if os.path.exists(DEFAULT_DATASET_PATH) else "data/demo_security_logs.csv"

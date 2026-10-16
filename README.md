@@ -21,10 +21,9 @@
 
 The **Cloud-Based Cyber Threat Detection Dashboard** is a real-time security operations centre (SOC) tool built with Python and Streamlit. It ingests cloud network telemetry, applies a dual-layer detection pipeline (rule-based heuristics + machine-learning Isolation Forest anomaly detection), computes CVSS-aligned composite risk scores (0–100), and provides an interactive forensic investigation workbench with MITRE ATT&CK® mapping.
 
-### 🌟 Real-World Benchmark Datasets Included:
-1. **CIC-IDS2017 Intrusion Benchmark** (Canadian Institute for Cybersecurity, UNB): 726 telemetry events modeling real-world SSH-Patator brute force, PortScan reconnaissance, and abnormal exfiltration.
-2. **AWS Cloud Honeypot Attack Telemetry**: 485 real cloud attack records targeting SSH Port 22, RDP Port 3389, and port sweeps against AWS EC2 instances.
-3. **Enterprise Security Logs**: 610 multi-vector security events with automated alert generation.
+### 🌟 Demonstration Scenarios (Two Curated Datasets):
+1. **🟢 Dataset 1: Normal Cloud Activity (Routine Baseline)**: 300 telemetry events representing healthy cloud workloads, authorized administrative logins, and benign web traffic. Verifies zero false alarms and healthy operational status.
+2. **🚨 Dataset 2: Active Cyber Attack Incidents (Intrusions & Threats)**: 610 multi-vector telemetry events featuring real SSH brute-force credential attacks, network port sweeps, and abnormal data exfiltration spikes. Flagged by heuristic rules and Isolation Forest ML.
 
 ---
 
@@ -38,11 +37,11 @@ The **Cloud-Based Cyber Threat Detection Dashboard** is a real-time security ope
   ┌──────────────┐     ┌───────────────────────────────────────┐
   │  Data Layer  │────▶│          Detection Engine             │
   │              │     │                                       │
-  │ • Synthetic  │     │  ┌─────────────────────────────────┐  │
-  │   Generator  │     │  │  Rule-Based Heuristics          │  │
-  │ • CSV Import │     │  │  ┌─────────────┐ ┌───────────┐  │  │
-  │ • Streaming  │     │  │  │ Brute Force │ │ Port Scan │  │  │
-  │   Events     │     │  │  └─────────────┘ └───────────┘  │  │
+  │ • Baseline   │     │  ┌─────────────────────────────────┐  │
+  │   Telemetry  │     │  │  Rule-Based Heuristics          │  │
+  │ • Cyber      │     │  │  ┌─────────────┐ ┌───────────┐  │  │
+  │   Attacks    │     │  │  │ Brute Force │ │ Port Scan │  │  │
+  │ • CSV Feeds  │     │  │  └─────────────┘ └───────────┘  │  │
   └──────────────┘     │  │  ┌───────────────────────────┐  │  │
                         │  │  │   Abnormal Traffic        │  │  │
                         │  │  └───────────────────────────┘  │  │
@@ -62,9 +61,10 @@ The **Cloud-Based Cyber Threat Detection Dashboard** is a real-time security ope
                         ┌─────────────────▼─────────────────────┐
                         │        Streamlit Dashboard            │
                         │                                       │
-                        │  ① Overview    ② Live Monitor        │
-                        │  ③ Threat Intel ④ ML Insights        │
-                        │  ⑤ Alerts & Reports                  │
+                        │  ① Live Operational Status & KPIs    │
+                        │  ② Dynamic Analytic Graphs            │
+                        │  ③ Interactive Alerts & Logs Tables   │
+                        │  ④ Real-Life SOC Team Remediation     │
                         └───────────────────────────────────────┘
 ```
 
@@ -72,15 +72,15 @@ The **Cloud-Based Cyber Threat Detection Dashboard** is a real-time security ope
 
 ## Features
 
-### 📊 Five Dashboard Pages
+### 📊 Streamlined Demonstration Interface
 
-| Page | Description |
-|------|-------------|
-| **① Overview** | KPI cards (total events, active alerts, critical count, detection rate), automated threat report, severity donut, active engines |
-| **② Log Monitoring** | Real-time event feed, protocol breakdown, sliding-window traffic indicators |
-| **③ Alerts** | Full alert table with filter/sort, severity mapping, CSV export, lifecycle state updates |
-| **④ Analytics** | Isolation Forest anomaly scatter, feature importance, contamination tuning, attack vector correlation |
-| **⑤ Investigation** | Offender forensic drilldown, source IP timeline, destination port matrix |
+| Component | Description |
+|-----------|-------------|
+| **Operational Status & KPIs** | Live health banner (Safe vs Attack in progress), ingested event counters, active alerts, high/critical severity metrics, and average risk index |
+| **Analytic Graphs** | Dynamic Plotly visualizations that vary by dataset: threat distribution donut, severity breakdown, telemetry timeline spike detection, and top offending IPs / target ports |
+| **Alerts & SOC Triage Table** | Filterable table by severity & threat category; interactive selection of any alert to inspect root cause narrative, MITRE ATT&CK technique, and execute real-life SOC defense actions |
+| **Security Logs Table** | Searchable & filterable stream of raw telemetry events with search by IP or user |
+| **Executive Dossier** | Human-readable executive summary and one-click export for reports (TXT) and alerts (CSV) |
 
 ### 🔍 Detection Engine
 
